@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tests / cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Données locales / journaux
+*.sqlite
+*.db
+*.jsonl
+!knowledge/**/*.json
+
+# OS / éditeurs
+.DS_Store
+.idea/
+.vscode/

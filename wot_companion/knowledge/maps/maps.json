@@ -1,0 +1,55 @@
+{
+  "version": "kb-2026.08",
+  "maps": {
+    "prokhorovka": {
+      "label": "Prokhorovka",
+      "note": "Contraste spotting / lignes de tir ; bon terrain pour tester les rôles.",
+      "spawns": ["north", "south"],
+      "flanks": {
+        "west": "ligne 1 (chemin de fer / colline ouest)",
+        "center": "champ central expose",
+        "east": "village est / ligne 2"
+      }
+    },
+    "himmelsdorf": {
+      "label": "Himmelsdorf",
+      "note": "Plans lourds/mediums clairs, faible dependance a la vision.",
+      "spawns": ["north", "south"],
+      "flanks": {
+        "hill": "colline (chateau)",
+        "town": "ville / voies ferrees",
+        "cap": "zone de base"
+      }
+    },
+    "malinovka": {
+      "label": "Malinovka",
+      "note": "Differenciation colline / foret / spot.",
+      "spawns": ["north", "south"],
+      "flanks": {
+        "hill": "colline sud-est",
+        "field": "champ central (a eviter tot)",
+        "forest": "foret / village nord-ouest"
+      }
+    },
+    "mines": {
+      "label": "Mines",
+      "note": "Tempo early tres marque ; utile pour tester urgence et risque.",
+      "spawns": ["north", "south"],
+      "flanks": {
+        "hill": "colline centrale (cle)",
+        "harbor": "port sud",
+        "town": "village nord"
+      }
+    },
+    "ruinberg": {
+      "label": "Ruinberg",
+      "note": "Rotations courtes et combats urbains.",
+      "spawns": ["north", "south"],
+      "flanks": {
+        "town": "ville (combat rapproche)",
+        "field": "champ / foret",
+        "center": "cathedrale / centre"
+      }
+    }
+  }
+}
