@@ -1,43 +1,40 @@
 # -*- coding: utf-8 -*-
 """WoT Companion Bridge - mod client POC (Game Adapter reel).
 
-Ce fichier tourne DANS le processus Python de World of Tanks (WoT 1.16.1+,
-Python 3.8). Il est volontairement AUTONOME : il n'importe rien du paquet
-`wot_companion` (indisponible cote jeu). Il se contente de lire des informations
-NORMALEMENT DISPONIBLES au joueur et de les envoyer, en JSON sur un socket local
-(127.0.0.1:47800), au compagnon externe qui heberge le moteur.
+Ce fichier tourne DANS le processus Python de World of Tanks / Mir Tankov
+(clients recents, Python 3). Il est volontairement AUTONOME : il n'importe rien
+du paquet `wot_companion` (indisponible cote jeu). Il lit uniquement des
+informations NORMALEMENT DISPONIBLES au joueur et les envoie, en JSON sur un
+socket local (127.0.0.1:47800), au compagnon externe qui heberge le moteur.
 
-CONTRAT FAIR PLAY (identique a la whitelist du moteur) : ce mod ne lit et
-n'envoie QUE : entree/sortie de bataille, char du joueur, carte, spawn,
-composition au chargement, HP propre, degats/assist propres, comptes de
-vehicules vivants, temps. Il ne lit AUCUNE donnee ennemie cachee (reload,
-position non spot, direction de canon), n'automatise rien.
+CONTRAT FAIR PLAY : bataille, char du joueur, carte, spawn, composition au
+chargement, HP propre, temps, comptes de vehicules vivants. Aucune donnee
+ennemie cachee, aucune automatisation.
 
-STATUT : POC. Les lectures d'etat tentent PLUSIEURS chemins d'API connus (les
-noms varient selon la version). Tout est enveloppe dans des try/except : une
-erreur d'adapter ne doit jamais faire planter le jeu (NFR-007). Le mode
-DISCOVERY (DISCOVERY=True) ecrit un rapport complet, valeur par valeur, dans
-python.log ET dans un fichier dedie `wot_companion_discovery.log` : il suffit de
-me le coller pour que j'ajuste les hooks en un seul aller-retour.
+STATUT : POC. Tout est enveloppe dans des try/except : une erreur d'adapter ne
+doit jamais faire planter le jeu. Le mod ecrit TOUS ses messages a la fois dans
+python.log ET dans un fichier dedie `wot_companion.log` place dans un dossier
+sur pour etre facilement retrouve (profil utilisateur en priorite).
 """
 from __future__ import absolute_import
 
 import json
 import os
-import socket
 import threading
 import time
 import traceback
+# NB: `socket` est importe PLUS TARD, dans _Sender (certains clients restreignent
+# son import au niveau module ; le differer evite un echec d'import silencieux).
 
 # --- Configuration -----------------------------------------------------------
 HOST = "127.0.0.1"
 PORT = 47800
-POLL_INTERVAL_S = 2.0          # cadence de lecture d'etat (impact perf faible)
-DISCOVERY = True               # rapport de decouverte (a passer a False apres POC)
-DISCOVERY_DELAY_S = 6.0        # 2e rapport quand l'arene est bien peuplee
+POLL_INTERVAL_S = 2.0
+DISCOVERY = True
+DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
+BUILD_TAG = "b2"               # marqueur de build : confirme que la nouvelle version tourne
 
-# Normalisation des cartes (geometryName WoT -> map_id du moteur). A completer.
 MAP_NAME_MAP = {
     "05_prohorovka": "prokhorovka", "prohorovka": "prokhorovka",
     "amigo_town": "himmelsdorf", "01_karelia_himmelsdorf": "himmelsdorf",
@@ -46,8 +43,6 @@ MAP_NAME_MAP = {
     "mines": "mines", "35_iranian_mine": "mines",
     "08_ruinberg": "ruinberg", "ruinberg": "ruinberg",
 }
-
-# Normalisation de quelques chars (nom de descripteur -> vehicle_id du moteur).
 VEHICLE_NAME_MAP = {
     "Leopard1": "leopard_1", "G65_Leopard1": "leopard_1",
     "E-50 Ausf. M": "e50m", "G78_E-50_Ausf_M": "e50m",
@@ -55,16 +50,60 @@ VEHICLE_NAME_MAP = {
     "E-100": "e100", "G88_E-100": "e100",
     "T110E5": "t110e5", "A86_T110E5": "t110e5",
 }
-
 _CLASS_TAGS = (
     ("heavyTank", "heavy"), ("mediumTank", "medium"), ("lightTank", "light"),
     ("AT-SPG", "td"), ("SPG", "spg"),
 )
 
 
-# --- Journalisation ----------------------------------------------------------
+# --- Journalisation robuste --------------------------------------------------
+def _candidate_dirs():
+    dirs = []
+    try:
+        appd = os.environ.get("APPDATA")
+        if appd:
+            dirs.append(os.path.join(appd, "Wargaming.net", "WorldOfTanks"))
+            dirs.append(appd)
+    except Exception:
+        pass
+    try:
+        dirs.append(os.path.expanduser("~"))
+    except Exception:
+        pass
+    try:
+        dirs.append(os.getcwd())
+    except Exception:
+        pass
+    return dirs
+
+
+def _resolve_out_dir():
+    for d in _candidate_dirs():
+        try:
+            if d and os.path.isdir(d) and os.access(d, os.W_OK):
+                return d
+        except Exception:
+            continue
+    try:
+        return os.path.expanduser("~")
+    except Exception:
+        return "."
+
+
+_OUT_DIR = _resolve_out_dir()
+_LOG_FILE = os.path.join(_OUT_DIR, "wot_companion.log")
+_DISCOVERY_FILE = os.path.join(_OUT_DIR, "wot_companion_discovery.log")
+
+
+def _file_append(path, msg):
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(str(msg) + "\n")
+    except Exception:
+        pass
+
+
 def _log(msg):
-    """Ecrit dans python.log (LOG_NOTE si dispo, sinon print)."""
     line = "[WoTCompanion] " + str(msg)
     try:
         import debug_utils
@@ -74,21 +113,15 @@ def _log(msg):
             print(line)
         except Exception:
             pass
+    _file_append(_LOG_FILE, line)
 
 
 def _discovery_log(msg):
-    """Rapport de decouverte : python.log + fichier dedie (best effort)."""
     _log(msg)
-    try:
-        path = os.path.join(os.getcwd(), "wot_companion_discovery.log")
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(str(msg) + "\n")
-    except Exception:
-        pass
+    _file_append(_DISCOVERY_FILE, msg)
 
 
 def _first(*getters):
-    """Retourne la 1re valeur non-None obtenue sans exception parmi getters."""
     for g in getters:
         try:
             v = g()
@@ -100,7 +133,6 @@ def _first(*getters):
 
 
 def _probe(label, getter):
-    """Evalue getter() et journalise le resultat (mode DISCOVERY)."""
     try:
         val = getter()
         _discovery_log("  OK   %-28s = %r" % (label, val))
@@ -110,10 +142,13 @@ def _probe(label, getter):
         return None
 
 
+# Marqueur de demarrage IMMEDIAT : si cette ligne apparait, le module a bien ete
+# importe et execute par le client.
+_log("=== Module importe (build %s). Journal: %s ===" % (BUILD_TAG, _LOG_FILE))
+
+
 # --- Client socket non bloquant ---------------------------------------------
 class _Sender(object):
-    """Envoie des envelopes JSON au compagnon. N'echoue jamais bruyamment."""
-
     def __init__(self, host, port):
         self.host = host
         self.port = port
@@ -124,6 +159,7 @@ class _Sender(object):
         if self._sock is not None:
             return True
         try:
+            import socket  # import differe (voir en-tete)
             self._sock = socket.create_connection((self.host, self.port), timeout=2.0)
             _log("Connecte au compagnon %s:%d" % (self.host, self.port))
             return True
@@ -186,7 +222,6 @@ def _class_from_tags(tags):
 
 
 def _normalize_vehicle(type_descriptor):
-    """Retourne (vehicle_id, class) a partir du descripteur du char joueur."""
     try:
         vtype = getattr(type_descriptor, "type", type_descriptor)
         name = getattr(vtype, "name", None) or ""
@@ -194,7 +229,7 @@ def _normalize_vehicle(type_descriptor):
         vid = VEHICLE_NAME_MAP.get(short) or VEHICLE_NAME_MAP.get(name)
         klass = _class_from_tags(getattr(vtype, "tags", ()) or ())
         if vid is None and short:
-            vid = short.lower()  # fallback : nom brut normalise
+            vid = short.lower()
         return vid, klass
     except Exception:
         return None, None
@@ -239,7 +274,6 @@ def _get_health(p):
 
 
 def _iter_arena_vehicles(arena):
-    """Retourne la liste (vid, team, class, isAlive) des vehicules connus."""
     out = []
     vehicles = _first(lambda: arena.vehicles)
     if not vehicles:
@@ -267,12 +301,14 @@ class CompanionBridge(object):
         self._start_time = None
 
     def on_avatar_ready(self):
+        _log("Evenement: avatar pret (debut de bataille).")
         try:
             self._on_battle_start()
         except Exception:
             _log("on_avatar_ready:\n" + traceback.format_exc())
 
     def on_avatar_non_player(self):
+        _log("Evenement: sortie de bataille.")
         try:
             self._on_battle_end()
         except Exception:
@@ -287,20 +323,16 @@ class CompanionBridge(object):
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
 
-        # Char du joueur (BAT-002)
         vid, klass = _normalize_vehicle(_get_vehicle_descriptor(p))
         self.sender.send("PLAYER_VEHICLE", {"vehicle_id": vid, "class": klass},
                          self.battle_id)
 
-        # Carte + spawn (BAT-003)
         map_id = _normalize_map(_get_geometry(arena))
         if map_id:
             self.sender.send("MAP_INFO", {"map_id": map_id}, self.battle_id)
-        # POC: heuristique de spawn a valider par observation.
         spawn = "north" if self.my_team == 1 else "south"
         self.sender.send("SPAWN_INFO", {"spawn": spawn}, self.battle_id)
 
-        # Composition (BAT-004)
         self._send_composition(arena)
 
         if DISCOVERY:
@@ -308,7 +340,6 @@ class CompanionBridge(object):
             self._schedule(DISCOVERY_DELAY_S,
                            lambda: self.discover(_player(), _get_arena(_player()),
                                                  phase="delayed"))
-
         self._start_polling()
 
     def _send_composition(self, arena):
@@ -381,12 +412,12 @@ class CompanionBridge(object):
                              {"allies_alive": allies, "enemies_alive": enemies},
                              self.battle_id)
 
-    # ---- Mode DISCOVERY : rapport valeur par valeur (POC) ------------------
     def discover(self, p, arena, phase):
         _discovery_log("===== DISCOVERY (%s) %s =====" %
                        (phase, time.strftime("%Y-%m-%d %H:%M:%S")))
         _probe("player.team", lambda: p.team)
         _probe("player.playerVehicleID", lambda: p.playerVehicleID)
+        _probe("arena present", lambda: arena is not None)
         _probe("arena.arenaType.geometryName", lambda: arena.arenaType.geometryName)
         _probe("normalized map_id", lambda: _normalize_map(_get_geometry(arena)))
         descr = _get_vehicle_descriptor(p)
@@ -400,26 +431,29 @@ class CompanionBridge(object):
         for row in vehicles[:4]:
             _discovery_log("    sample vid=%r team=%r class=%r alive=%r" % row)
         _probe("arena.period", lambda: arena.period)
-        _probe("arena.periodEndTime", lambda: arena.periodEndTime)
-        _discovery_log("Pour ajuster les hooks, colle ce bloc au developpeur.")
+        _discovery_log("Colle ce bloc au developpeur pour ajuster les hooks.")
         _discovery_log("=====================================")
 
 
 # --- Point d'entree du mod ---------------------------------------------------
 _bridge = None
+_inited = False
 
 
 def init():
-    """Appele automatiquement par WoT au chargement du mod."""
-    global _bridge
+    """Appele automatiquement par WoT au chargement du mod (et a l'import)."""
+    global _bridge, _inited
+    if _inited:
+        return
+    _inited = True
     try:
         _bridge = CompanionBridge()
-        _log("Mod WoT Companion Bridge charge (POC).")
+        _log("Mod charge (build %s). En attente d'une bataille." % BUILD_TAG)
         try:
             from PlayerEvents import g_playerEvents
-            g_playerEvents.onAvatarReady += _bridge.on_avatar_ready          # POC
-            g_playerEvents.onAvatarBecomeNonPlayer += _bridge.on_avatar_non_player  # POC
-            _log("Hooks g_playerEvents branches.")
+            g_playerEvents.onAvatarReady += _bridge.on_avatar_ready
+            g_playerEvents.onAvatarBecomeNonPlayer += _bridge.on_avatar_non_player
+            _log("Hooks g_playerEvents branches (onAvatarReady / onAvatarBecomeNonPlayer).")
         except Exception:
             _log("g_playerEvents indisponible, hooks a adapter:\n" + traceback.format_exc())
     except Exception:
@@ -436,7 +470,8 @@ def fini():
         _bridge = None
 
 
+# Auto-init a l'import (au cas ou le loader n'appelle pas init()).
 try:
     init()
 except Exception:
-    _log("init differe.")
+    _log("init differe:\n" + traceback.format_exc())
