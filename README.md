@@ -103,6 +103,10 @@ fonctionnent de bout en bout.
 
 ### 2. Avec le vrai client WoT (le POC)
 
+> 📘 **Guide d'installation pas à pas** (récupération GitHub, build du mod, dossier `mods`, récupération du log) :
+> [`GUIDE_INSTALLATION.md`](GUIDE_INSTALLATION.md).
+
+
 Un **mod WoT autonome et défensif** lit uniquement les données autorisées et les
 envoie sur le pont. Il est fourni avec un mode *discovery* pour valider, champ
 par champ, ce que le client expose réellement.
