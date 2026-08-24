@@ -16,13 +16,16 @@ doit jamais faire planter le jeu. Le mod ecrit TOUS ses messages a la fois dans
 python.log ET dans un fichier dedie `wot_companion.log` place dans un dossier
 sur pour etre facilement retrouve (profil utilisateur en priorite).
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
+import io
 import json
 import os
 import threading
 import time
 import traceback
+# Compatible Python 2.7 ET 3.x : le client WoT peut embarquer l'un ou l'autre
+# selon la version. Pas de f-strings, io.open pour l'encodage, print_function.
 # NB: `socket` est importe PLUS TARD, dans _Sender (certains clients restreignent
 # son import au niveau module ; le differer evite un echec d'import silencieux).
 
@@ -97,8 +100,8 @@ _DISCOVERY_FILE = os.path.join(_OUT_DIR, "wot_companion_discovery.log")
 
 def _file_append(path, msg):
     try:
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(str(msg) + "\n")
+        with io.open(path, "a", encoding="utf-8") as fh:  # io.open : encodage OK en 2.7 et 3
+            fh.write(u"" + str(msg) + u"\n")
     except Exception:
         pass
 
