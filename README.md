@@ -78,6 +78,57 @@ Exemple de sortie (personnalité *coach*) :
 
 ---
 
+## Tester en conditions réelles (POC)
+
+Le compagnon reçoit ses événements via un **pont IPC socket local** (contrat
+`EventEnvelope`, §9.2). Trois couches découplées : la **source** d'événements, le
+**pont**, le **moteur+affichage**. On valide de la plus sûre à la plus réelle.
+
+### 1. Chaîne complète, sans le jeu (marche tout de suite)
+
+Deux fenêtres de terminal sur ton PC :
+
+```bash
+# Fenêtre 1 — le compagnon (écoute le pont, affiche les conseils en direct)
+python -m wot_companion.tools.live
+
+# Fenêtre 2 — un injecteur qui rejoue de vraies batailles simulées
+python -m wot_companion.tools.inject --scenarios          # accéléré
+python -m wot_companion.tools.inject --scenarios --realtime  # au rythme réel
+```
+
+Tu vois les conseils s'afficher live et l'historique s'écrire dans
+`wot_companion.sqlite`. Cela prouve que **moteur + pont + affichage + profil**
+fonctionnent de bout en bout.
+
+### 2. Avec le vrai client WoT (le POC)
+
+Un **mod WoT autonome et défensif** lit uniquement les données autorisées et les
+envoie sur le pont. Il est fourni avec un mode *discovery* pour valider, champ
+par champ, ce que le client expose réellement.
+
+```bash
+# Construire le paquet installable
+python -m wot_companion.game_adapter.wot_mod.build_wotmod
+# -> dist/com.wotcompanion.bridge_0.1.0.wotmod  (à copier dans mods/<version>/)
+```
+
+Procédure complète d'installation et de **validation des données** (définition
+de fini du POC, Annexe C) :
+[`wot_companion/game_adapter/wot_mod/README_MOD.md`](wot_companion/game_adapter/wot_mod/README_MOD.md).
+
+> Le mod est marqué POC : ses points d'accroche (`# POC:`) dépendent de la
+> version de WoT et s'ajustent à partir des logs `python.log` — sans jamais
+> pouvoir faire planter le jeu (tout est en `try/except`).
+
+### Mode silence en direct (BAT-008)
+
+```bash
+python -m wot_companion.tools.inject --silence   # bascule ON/OFF
+```
+
+---
+
 ## Architecture (pipeline de décision, §7.1)
 
 ```
@@ -108,6 +159,9 @@ recommandation. Le rejeu d'un journal reproduit exactement les décisions.
 ```
 wot_companion/
 ├─ game_adapter/     # interface GameAdapter, EventEnvelope, simulateur
+│  ├─ ipc.py         # pont socket local (serveur + client)
+│  └─ wot_mod/       # mod WoT POC (source réelle) + build .wotmod
+├─ live/             # LiveRunner : pont -> moteur -> console
 ├─ core/
 │  ├─ context/       # BattleContext + Feature Builder
 │  ├─ rules/         # règles tactiques autorisées
@@ -120,7 +174,7 @@ wot_companion/
 ├─ profile/          # historique SQLite + tendances + profil joueur
 ├─ ui/               # personnalités, rendu texte, overlay (sink)
 ├─ integrations/     # wargaming_api/ (opt) + llm_optional/ (opt)
-├─ tools/            # run_simulation, kb_check
+├─ tools/            # run_simulation, kb_check, live, inject
 ├─ settings.py
 └─ app.py            # CompanionApp (câblage complet)
 tests/               # unitaires + REC-01→REC-10

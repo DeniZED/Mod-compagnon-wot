@@ -7,8 +7,13 @@ tester tout le moteur sans le jeu.
 """
 from .base import EventEnvelope, GameAdapter
 from .simulator import SimulatedAdapter, Scenario, make_default_scenarios
+from .ipc import (
+    SocketEventServerAdapter, EnvelopeClient, DEFAULT_HOST, DEFAULT_PORT,
+    is_control, CONTROL_PREFIX,
+)
 
 __all__ = [
     "EventEnvelope", "GameAdapter", "SimulatedAdapter", "Scenario",
-    "make_default_scenarios",
+    "make_default_scenarios", "SocketEventServerAdapter", "EnvelopeClient",
+    "DEFAULT_HOST", "DEFAULT_PORT", "is_control", "CONTROL_PREFIX",
 ]

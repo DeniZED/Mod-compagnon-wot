@@ -19,6 +19,10 @@ htmlcov/
 *.jsonl
 !knowledge/**/*.json
 
+# Paquet mod construit
+*.wotmod
+wot_companion/game_adapter/wot_mod/dist/
+
 # OS / éditeurs
 .DS_Store
 .idea/

@@ -22,12 +22,18 @@ dev = ["pytest>=7.0"]
 [project.scripts]
 wot-companion-sim = "wot_companion.tools.run_simulation:main"
 wot-companion-kbcheck = "wot_companion.tools.kb_check:main"
+wot-companion-live = "wot_companion.tools.live:main"
+wot-companion-inject = "wot_companion.tools.inject:main"
 
 [tool.setuptools.packages.find]
 include = ["wot_companion*"]
 
 [tool.setuptools.package-data]
-wot_companion = ["knowledge/**/*.json", "ui/*.json", "profile/*.sql"]
+wot_companion = [
+    "knowledge/**/*.json", "ui/*.json", "profile/*.sql",
+    "game_adapter/wot_mod/*.py", "game_adapter/wot_mod/*.xml",
+    "game_adapter/wot_mod/*.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

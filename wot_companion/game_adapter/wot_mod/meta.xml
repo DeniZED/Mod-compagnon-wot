@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <id>com.wotcompanion.bridge</id>
+    <version>0.1.0</version>
+    <name>WoT Companion Bridge (POC)</name>
+    <description>
+        Pont POC : transmet au compagnon externe uniquement des informations
+        normalement disponibles au joueur (bataille, char, carte, spawn,
+        composition au chargement, HP propre, temps, comptes de vehicules).
+        Ne lit aucune donnee ennemie cachee, n'automatise rien.
+    </description>
+</root>
