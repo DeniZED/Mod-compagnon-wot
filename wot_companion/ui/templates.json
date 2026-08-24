@@ -8,6 +8,12 @@
       "detendu": "Sur {map_label} {spawn}, pars plutot {flank_label} ({anchor}). {explanation}",
       "silencieux": "{map_label} {spawn} : {flank_label}."
     },
+    "initial_role_reminder": {
+      "coach": "{role_label} : {role_reminder}",
+      "commandant": "{role_label}. {role_reminder}",
+      "detendu": "{role_label} - {role_reminder}",
+      "silencieux": "{role_label}."
+    },
     "hp_preserve_early": {
       "coach": "Tu es deja a {hp_pct}% de HP tres tot. Conserve-les : evite les trades qui te coutent cher maintenant.",
       "commandant": "HP bas ({hp_pct}%). Joue safe.",

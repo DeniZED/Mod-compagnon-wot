@@ -28,7 +28,10 @@ class InitialPlanRule(Rule):
 
         plans = kb.candidate_plans(ctx.map_id, ctx.spawn, ctx.vehicle_role, ctx.composition)
         if not plans:
-            return []
+            # Carte hors des cartes detaillees : on ne fabrique pas de plan de
+            # position, mais si le rôle est connu on donne un rappel de rôle
+            # generique (utile sur toute carte, sans inventer de contexte carte).
+            return self._role_reminder(rc)
         plan, adj_score, reasons = plans[0]
 
         # Confiance : proportion des signaux de contexte reellement disponibles.
@@ -72,5 +75,29 @@ class InitialPlanRule(Rule):
                 "role_label": role_info.get("label", ctx.vehicle_role),
                 "explanation": plan.explanation,
                 "reasons": reasons,
+            },
+        )]
+
+    def _role_reminder(self, rc: RuleContext) -> list[CandidateAdvice]:
+        """Conseil d'ouverture generique base sur le rôle (carte non couverte)."""
+        ctx = rc.battle
+        role_info = rc.knowledge.role_info(ctx.vehicle_role)
+        if not role_info or not role_info.get("reminder"):
+            return []
+        return [CandidateAdvice(
+            rule_id=self.id,
+            category=AdviceCategory.INITIAL_PLAN,
+            action="ROLE_REMINDER",
+            reason_code="ROLE_OPENING_REMINDER",
+            template_key="initial_role_reminder",
+            severity=Severity.INFO,
+            ttl_seconds=9.0,
+            cooldown_key="initial_plan",
+            urgency=0.35,
+            impact=0.8,
+            confidence=1.0,  # le rôle est un signal fiable (tags du char)
+            context={
+                "role_label": role_info.get("label", ctx.vehicle_role),
+                "role_reminder": role_info.get("reminder"),
             },
         )]
