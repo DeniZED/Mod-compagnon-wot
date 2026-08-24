@@ -58,6 +58,25 @@ _CLASS_TAGS = (
     ("AT-SPG", "td"), ("SPG", "spg"),
 )
 
+# Rôle metier deduit des tags "role_*" du char (information visible au joueur).
+_ROLE_TAG_MAP = {
+    "role_HT_assault": "assault_heavy",
+    "role_HT_break": "assault_heavy",
+    "role_HT_support": "support_heavy",
+    "role_HT_universal": "support_heavy",
+    "role_MT_assault": "brawler_medium",
+    "role_MT_support": "sniper_medium",
+    "role_MT_sniper": "sniper_medium",
+    "role_MT_universal": "brawler_medium",
+    "role_LT": "scout",
+    "role_LT_universal": "scout",
+    "role_LT_wheeled": "scout",
+    "role_ATSPG_assault": "td_assault",
+    "role_ATSPG_support": "td_sniper",
+    "role_ATSPG_sniper": "td_sniper",
+    "role_ATSPG_universal": "td_sniper",
+}
+
 
 # --- Journalisation robuste --------------------------------------------------
 def _candidate_dirs():
@@ -224,18 +243,31 @@ def _class_from_tags(tags):
     return None
 
 
+def _role_from_tags(tags):
+    try:
+        for t in tags:
+            if t in _ROLE_TAG_MAP:
+                return _ROLE_TAG_MAP[t]
+    except Exception:
+        pass
+    return None
+
+
 def _normalize_vehicle(type_descriptor):
+    """Retourne (vehicle_id, class, role) depuis le descripteur du char joueur."""
     try:
         vtype = getattr(type_descriptor, "type", type_descriptor)
         name = getattr(vtype, "name", None) or ""
         short = str(name).split(":")[-1]
         vid = VEHICLE_NAME_MAP.get(short) or VEHICLE_NAME_MAP.get(name)
-        klass = _class_from_tags(getattr(vtype, "tags", ()) or ())
+        tags = getattr(vtype, "tags", ()) or ()
+        klass = _class_from_tags(tags)
+        role = _role_from_tags(tags)
         if vid is None and short:
             vid = short.lower()
-        return vid, klass
+        return vid, klass, role
     except Exception:
-        return None, None
+        return None, None, None
 
 
 # --- Acces client, multi-chemins (POC) --------------------------------------
@@ -326,8 +358,9 @@ class CompanionBridge(object):
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
 
-        vid, klass = _normalize_vehicle(_get_vehicle_descriptor(p))
-        self.sender.send("PLAYER_VEHICLE", {"vehicle_id": vid, "class": klass},
+        vid, klass, role = _normalize_vehicle(_get_vehicle_descriptor(p))
+        self.sender.send("PLAYER_VEHICLE",
+                         {"vehicle_id": vid, "class": klass, "role": role},
                          self.battle_id)
 
         map_id = _normalize_map(_get_geometry(arena))

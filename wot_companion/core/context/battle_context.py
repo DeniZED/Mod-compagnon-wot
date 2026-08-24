@@ -61,6 +61,7 @@ class BattleContext:
     remaining_s: float | None = None
 
     # Suivi derive (pour les regles tempo / repli)
+    contribution_seen: bool = False        # l'adaptateur fournit-il degats/assist ?
     last_contribution_s: float = 0.0       # dernier instant ou degats/assist ont bouge
     last_ally_loss_s: float | None = None
     flank_ally_losses: dict[str, int] = field(default_factory=dict)
@@ -81,6 +82,10 @@ class BattleContext:
             self.vehicle_id = p.get("vehicle_id")
             self.vehicle_tier = p.get("tier")
             self.vehicle_class = p.get("class")
+            # Rôle transmis directement par l'adaptateur (deduit des tags du char,
+            # information visible au joueur). Prioritaire sur la resolution KB.
+            if p.get("role"):
+                self.vehicle_role = p.get("role")
         elif et == EventType.MAP_INFO.value:
             self.map_id = p.get("map_id")
         elif et == EventType.SPAWN_INFO.value:
@@ -100,6 +105,7 @@ class BattleContext:
             elif "hp" in p and "max_hp" in p and p["max_hp"]:
                 self.hp_ratio = float(p["hp"]) / float(p["max_hp"])
         elif et == EventType.PLAYER_DAMAGE_DEALT.value:
+            self.contribution_seen = True
             new_total = p.get("total_damage")
             if new_total is None:
                 new_total = self.total_damage + float(p.get("damage", 0))
@@ -107,6 +113,7 @@ class BattleContext:
                 self.last_contribution_s = self.elapsed_s
             self.total_damage = float(new_total)
         elif et == EventType.PLAYER_ASSIST.value:
+            self.contribution_seen = True
             new_total = p.get("total_assist")
             if new_total is None:
                 new_total = self.total_assist + float(p.get("assist", 0))

@@ -26,6 +26,11 @@ class TempoInitiativeRule(Rule):
         f = rc.features
         ctx = rc.battle
 
+        # Fallback sûr : sans donnee de contribution (l'adaptateur ne fournit ni
+        # degats ni assist), on ne peut PAS juger l'inactivite -> silence.
+        # Evite un faux positif "tu ne contribues pas" quand la donnee manque.
+        if not ctx.contribution_seen:
+            return []
         # Pas de conseil de tempo en fin de partie : la priorite devient survie.
         if f.phase is BattlePhase.LATE:
             return []

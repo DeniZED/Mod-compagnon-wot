@@ -52,15 +52,26 @@ def test_hp_rule_fires_early_low_hp():
 def test_tempo_rule_requires_inactivity_and_balance():
     ctx = BattleContext(battle_id="b", start_ms=0)
     ctx.elapsed_s = 120
+    ctx.contribution_seen = True  # la source fournit degats/assist
     ctx.last_contribution_s = 0  # 120 s sans contribution
     ctx.allies_alive, ctx.enemies_alive = 14, 12  # avantage
     out = TempoInitiativeRule().evaluate(_rc(ctx))
     assert len(out) == 1 and out[0].action == "TAKE_INITIATIVE"
 
 
+def test_tempo_rule_silent_without_contribution_data():
+    # Faux positif evite : sans donnee de contribution, pas de conseil de tempo.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 120
+    ctx.last_contribution_s = 0
+    ctx.allies_alive, ctx.enemies_alive = 14, 12
+    assert TempoInitiativeRule().evaluate(_rc(ctx)) == []
+
+
 def test_tempo_rule_silent_when_outnumbered():
     ctx = BattleContext(battle_id="b", start_ms=0)
     ctx.elapsed_s = 120
+    ctx.contribution_seen = True
     ctx.last_contribution_s = 0
     ctx.allies_alive, ctx.enemies_alive = 8, 12  # inferiorite -> pas d'initiative
     assert TempoInitiativeRule().evaluate(_rc(ctx)) == []

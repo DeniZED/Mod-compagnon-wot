@@ -31,21 +31,33 @@ def test_normalize_map_known_and_path_and_unknown():
 
 
 def test_normalize_vehicle_known():
-    vid, klass = mod._normalize_vehicle(_Descr("germany:G65_Leopard1", {"mediumTank"}))
+    vid, klass, role = mod._normalize_vehicle(
+        _Descr("germany:G65_Leopard1", {"mediumTank", "role_MT_sniper"}))
     assert vid == "leopard_1"
     assert klass == "medium"
+    assert role == "sniper_medium"
 
 
 def test_normalize_vehicle_known_by_short_and_heavy():
-    vid, klass = mod._normalize_vehicle(_Descr("ussr:R99_IS-7", {"heavyTank"}))
+    vid, klass, role = mod._normalize_vehicle(
+        _Descr("ussr:R99_IS-7", {"heavyTank", "role_HT_assault"}))
     assert vid == "is7"
     assert klass == "heavy"
+    assert role == "assault_heavy"
 
 
 def test_normalize_vehicle_unknown_falls_back_to_raw_name():
-    vid, klass = mod._normalize_vehicle(_Descr("usa:A99_Foo_Bar", {"AT-SPG"}))
+    vid, klass, role = mod._normalize_vehicle(_Descr("usa:A99_Foo_Bar", {"AT-SPG"}))
     assert vid == "a99_foo_bar"  # nom brut normalise
     assert klass == "td"
+    assert role is None  # pas de tag role_* -> role inconnu
+
+
+def test_role_from_tags_maps_wot_roles():
+    assert mod._role_from_tags({"heavyTank", "role_HT_support"}) == "support_heavy"
+    assert mod._role_from_tags({"role_LT_wheeled"}) == "scout"
+    assert mod._role_from_tags({"role_ATSPG_assault"}) == "td_assault"
+    assert mod._role_from_tags({"mediumTank"}) is None
 
 
 def test_class_from_tags():

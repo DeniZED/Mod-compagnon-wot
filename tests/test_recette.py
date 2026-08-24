@@ -53,6 +53,7 @@ def test_rec03_repeated_advice_blocked_by_cooldown():
     engine = AdviceEngine()
     for e in opening_events():
         engine.on_event(e)
+    engine.context.contribution_seen = True
     engine.context.last_contribution_s = 0
     engine.context.allies_alive, engine.context.enemies_alive = 14, 12
     engine.on_event(tick(120))

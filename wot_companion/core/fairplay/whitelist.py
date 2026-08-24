@@ -21,7 +21,7 @@ WHITELIST: dict[str, frozenset[str]] = {
     EventType.BATTLE_START.value: frozenset({"battle_id", "arena_id"}),
     EventType.BATTLE_END.value: frozenset({"battle_id", "reason"}),
     # Contexte propre au joueur
-    EventType.PLAYER_VEHICLE.value: frozenset({"vehicle_id", "tier", "class"}),
+    EventType.PLAYER_VEHICLE.value: frozenset({"vehicle_id", "tier", "class", "role"}),
     EventType.MAP_INFO.value: frozenset({"map_id"}),
     EventType.SPAWN_INFO.value: frozenset({"spawn"}),
     # Composition connue au chargement : classes/tiers agreges uniquement.

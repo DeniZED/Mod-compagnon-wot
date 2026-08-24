@@ -99,7 +99,9 @@ class AdviceEngine:
         self.context.apply(evt)
 
         # Resolution du rôle metier a la reception du vehicule (BAT-002).
-        if evt.event_type == EventType.PLAYER_VEHICLE.value:
+        # Si l'adaptateur a deja fourni le rôle (tags du char), on le garde ;
+        # sinon on tente la resolution via la base de connaissances locale.
+        if evt.event_type == EventType.PLAYER_VEHICLE.value and not self.context.vehicle_role:
             self.context.vehicle_role = self.knowledge.resolve_role(self.context.vehicle_id)
 
         return True
