@@ -1,0 +1,76 @@
+"""Regle du plan initial (BAT-005). Produit une recommandation de depart.
+
+Depend uniquement de donnees autorisees : carte, spawn, vehicule (rôle), et
+composition connue au chargement.
+"""
+from __future__ import annotations
+
+from ...settings import AdviceCategory, Severity
+from ..advice import CandidateAdvice
+from .base import Rule, RuleContext
+
+
+class InitialPlanRule(Rule):
+    id = "plan.initial"
+    category = AdviceCategory.INITIAL_PLAN.value
+    dependencies = (
+        "MAP_INFO.map_id", "SPAWN_INFO.spawn", "PLAYER_VEHICLE.vehicle_id",
+        "TEAM_COMPOSITION.ally_classes", "TEAM_COMPOSITION.enemy_classes",
+    )
+    once_per_battle = True
+
+    def evaluate(self, rc: RuleContext) -> list[CandidateAdvice]:
+        ctx = rc.battle
+        kb = rc.knowledge
+        # Fallback sûr : sans carte, aucun plan n'est invente (REC-01).
+        if not ctx.map_id:
+            return []
+
+        plans = kb.candidate_plans(ctx.map_id, ctx.spawn, ctx.vehicle_role, ctx.composition)
+        if not plans:
+            return []
+        plan, adj_score, reasons = plans[0]
+
+        # Confiance : proportion des signaux de contexte reellement disponibles.
+        signals = [
+            ctx.spawn is not None,
+            ctx.vehicle_role is not None,
+            bool(ctx.composition.enemy_classes) or ctx.composition.enemy_count is not None,
+        ]
+        confidence = sum(1 for s in signals if s) / len(signals)
+
+        # Impact : plans mieux notes = valeur attendue plus elevee (borne 0..1).
+        impact = min(1.0, adj_score / 70.0)
+        # Urgence faible : c'est un conseil de depart, non une alerte.
+        urgency = 0.15
+
+        flank_label = kb.flank_label(ctx.map_id, plan.flank)
+        map_info = kb.map_info(ctx.map_id) or {}
+        role_info = kb.role_info(ctx.vehicle_role) or {}
+
+        return [CandidateAdvice(
+            rule_id=self.id,
+            category=AdviceCategory.INITIAL_PLAN,
+            action="OPEN_" + (plan.aggression or "neutre").upper(),
+            reason_code="INITIAL_PLAN_SELECTED",
+            template_key="initial_plan",
+            severity=Severity.INFO,
+            ttl_seconds=10.0,
+            cooldown_key="initial_plan",
+            urgency=urgency,
+            impact=impact,
+            confidence=confidence,
+            context={
+                "plan_id": plan.plan_id,
+                "map_label": map_info.get("label", ctx.map_id),
+                "spawn": ctx.spawn,
+                "flank": plan.flank,
+                "flank_label": flank_label,
+                "anchor": plan.anchor,
+                "aggression": plan.aggression,
+                "risk": plan.risk,
+                "role_label": role_info.get("label", ctx.vehicle_role),
+                "explanation": plan.explanation,
+                "reasons": reasons,
+            },
+        )]

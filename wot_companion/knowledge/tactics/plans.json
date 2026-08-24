@@ -1,0 +1,179 @@
+{
+  "version": "kb-2026.08",
+  "source": "curation interne / coach / tests",
+  "_conditions_doc": "requirements/avoid_if : comparaisons sur la composition connue au chargement. Vocabulaire : enemy_<class>, ally_<class> (heavy|medium|light|td|spg) avec operateurs >=,<=,>,<,== ; jetons 'outnumbered' (moins d'allies que d'ennemis) et 'no_ally_support' (aucun medium/heavy allie).",
+  "plans": [
+    {
+      "plan_id": "prokho_south_west_safe",
+      "map_id": "prokhorovka", "spawn": "south", "roles": ["sniper_medium", "td_sniper", "scout"],
+      "phase": "early", "flank": "west", "anchor": "ligne 1 ouest (voie ferree)",
+      "risk": "medium", "aggression": "prudent", "base_score": 60,
+      "requirements": [], "avoid_if": ["no_ally_support"],
+      "explanation": "Garde la distance et une sortie de repli ; exploite la vision plutot qu'un passage central expose."
+    },
+    {
+      "plan_id": "prokho_south_center_agressif",
+      "map_id": "prokhorovka", "spawn": "south", "roles": ["brawler_medium", "assault_heavy"],
+      "phase": "early", "flank": "center", "anchor": "poussee centre prudente",
+      "risk": "high", "aggression": "agressif", "base_score": 45,
+      "requirements": ["ally_medium>=3"], "avoid_if": ["outnumbered"],
+      "explanation": "Le centre n'est jouable que si assez de mediums allies suivent ; sinon c'est un trade perdant."
+    },
+    {
+      "plan_id": "prokho_south_east_line2",
+      "map_id": "prokhorovka", "spawn": "south", "roles": ["support_heavy", "td_assault"],
+      "phase": "early", "flank": "east", "anchor": "village est / ligne 2",
+      "risk": "medium", "aggression": "neutre", "base_score": 55,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Appuie la ligne est en second rideau, laisse les eclaireurs prendre la vision."
+    },
+    {
+      "plan_id": "prokho_north_west_safe",
+      "map_id": "prokhorovka", "spawn": "north", "roles": ["sniper_medium", "td_sniper", "scout"],
+      "phase": "early", "flank": "west", "anchor": "colline / ligne 1 ouest",
+      "risk": "medium", "aggression": "prudent", "base_score": 60,
+      "requirements": [], "avoid_if": ["no_ally_support"],
+      "explanation": "Prends une position de vision a l'ouest, garde la distance et une echappatoire."
+    },
+    {
+      "plan_id": "prokho_north_east_line2",
+      "map_id": "prokhorovka", "spawn": "north", "roles": ["assault_heavy", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "east", "anchor": "ligne est blindee",
+      "risk": "medium", "aggression": "neutre", "base_score": 55,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Impose ton blindage a l'est en gardant le soutien a portee."
+    },
+
+    {
+      "plan_id": "himmel_south_hill",
+      "map_id": "himmelsdorf", "spawn": "south", "roles": ["brawler_medium", "sniper_medium", "scout"],
+      "phase": "early", "flank": "hill", "anchor": "colline (chateau)",
+      "risk": "high", "aggression": "neutre", "base_score": 55,
+      "requirements": ["ally_medium>=2"], "avoid_if": ["outnumbered"],
+      "explanation": "La colline se gagne en nombre : n'y monte pas seul, elle domine toute la ville."
+    },
+    {
+      "plan_id": "himmel_south_town",
+      "map_id": "himmelsdorf", "spawn": "south", "roles": ["assault_heavy", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "town", "anchor": "ville / voies ferrees",
+      "risk": "medium", "aggression": "neutre", "base_score": 60,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Combat lourd classique dans les rues : joue les angles et laisse le blindage travailler."
+    },
+    {
+      "plan_id": "himmel_north_town",
+      "map_id": "himmelsdorf", "spawn": "north", "roles": ["assault_heavy", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "town", "anchor": "ville / voies ferrees",
+      "risk": "medium", "aggression": "neutre", "base_score": 60,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Descends en ville avec la ligne lourde, garde un second rideau pour les trades."
+    },
+    {
+      "plan_id": "himmel_north_hill",
+      "map_id": "himmelsdorf", "spawn": "north", "roles": ["brawler_medium", "sniper_medium", "scout"],
+      "phase": "early", "flank": "hill", "anchor": "colline (chateau)",
+      "risk": "high", "aggression": "neutre", "base_score": 55,
+      "requirements": ["ally_medium>=2"], "avoid_if": ["outnumbered"],
+      "explanation": "Conteste la colline en groupe ; isole, tu la perds et tu exposes la base."
+    },
+
+    {
+      "plan_id": "malino_south_hill",
+      "map_id": "malinovka", "spawn": "south", "roles": ["brawler_medium", "assault_heavy", "support_heavy"],
+      "phase": "early", "flank": "hill", "anchor": "colline sud-est",
+      "risk": "medium", "aggression": "neutre", "base_score": 58,
+      "requirements": [], "avoid_if": ["outnumbered"],
+      "explanation": "La colline structure la partie ; monte prudemment sans t'exposer au champ."
+    },
+    {
+      "plan_id": "malino_south_forest_safe",
+      "map_id": "malinovka", "spawn": "south", "roles": ["sniper_medium", "td_sniper", "scout"],
+      "phase": "early", "flank": "forest", "anchor": "foret / lisiere nord-ouest",
+      "risk": "low", "aggression": "prudent", "base_score": 62,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Ne traverse jamais le champ au depart : prends une lisiere couverte et laisse le spot venir."
+    },
+    {
+      "plan_id": "malino_north_forest_safe",
+      "map_id": "malinovka", "spawn": "north", "roles": ["sniper_medium", "td_sniper", "scout"],
+      "phase": "early", "flank": "forest", "anchor": "village / foret nord-ouest",
+      "risk": "low", "aggression": "prudent", "base_score": 62,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Tiens une ligne de tir couverte cote foret, patience sur le premier spot."
+    },
+    {
+      "plan_id": "malino_north_hill",
+      "map_id": "malinovka", "spawn": "north", "roles": ["brawler_medium", "assault_heavy", "support_heavy"],
+      "phase": "early", "flank": "hill", "anchor": "acces colline sud-est",
+      "risk": "medium", "aggression": "neutre", "base_score": 56,
+      "requirements": [], "avoid_if": ["outnumbered"],
+      "explanation": "Vise la colline mais sans traverser a decouvert ; la vision adverse punit l'ouverture."
+    },
+
+    {
+      "plan_id": "mines_south_hill",
+      "map_id": "mines", "spawn": "south", "roles": ["scout", "brawler_medium", "sniper_medium"],
+      "phase": "early", "flank": "hill", "anchor": "colline centrale",
+      "risk": "high", "aggression": "agressif", "base_score": 58,
+      "requirements": ["ally_light>=1"], "avoid_if": ["outnumbered"],
+      "explanation": "La colline centrale decide souvent la partie : conteste-la tot mais pas en solo."
+    },
+    {
+      "plan_id": "mines_south_harbor",
+      "map_id": "mines", "spawn": "south", "roles": ["assault_heavy", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "harbor", "anchor": "port sud (rochers)",
+      "risk": "medium", "aggression": "neutre", "base_score": 55,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Tiens le port derriere les rochers, appuie la colline par le tir des que possible."
+    },
+    {
+      "plan_id": "mines_north_hill",
+      "map_id": "mines", "spawn": "north", "roles": ["scout", "brawler_medium", "sniper_medium"],
+      "phase": "early", "flank": "hill", "anchor": "colline centrale",
+      "risk": "high", "aggression": "agressif", "base_score": 58,
+      "requirements": ["ally_light>=1"], "avoid_if": ["outnumbered"],
+      "explanation": "Course a la colline : arrive en soutien, pas isole, sinon tu offres le controle."
+    },
+    {
+      "plan_id": "mines_north_town",
+      "map_id": "mines", "spawn": "north", "roles": ["assault_heavy", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "town", "anchor": "village nord",
+      "risk": "medium", "aggression": "neutre", "base_score": 55,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Verrouille le village au nord, garde un angle vers la colline pour les trades."
+    },
+
+    {
+      "plan_id": "ruin_south_town",
+      "map_id": "ruinberg", "spawn": "south", "roles": ["assault_heavy", "brawler_medium", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "town", "anchor": "ville (combat rapproche)",
+      "risk": "medium", "aggression": "neutre", "base_score": 60,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Rotations courtes en ville : joue les coins, ne t'avance jamais seul dans une rue."
+    },
+    {
+      "plan_id": "ruin_south_field_safe",
+      "map_id": "ruinberg", "spawn": "south", "roles": ["sniper_medium", "td_sniper", "scout"],
+      "phase": "early", "flank": "field", "anchor": "champ / lisiere",
+      "risk": "medium", "aggression": "prudent", "base_score": 58,
+      "requirements": [], "avoid_if": ["enemy_light>=3"],
+      "explanation": "Couvre le champ depuis une lisiere ; attention aux eclaireurs qui percent tot."
+    },
+    {
+      "plan_id": "ruin_north_town",
+      "map_id": "ruinberg", "spawn": "north", "roles": ["assault_heavy", "brawler_medium", "support_heavy", "td_assault"],
+      "phase": "early", "flank": "town", "anchor": "ville (combat rapproche)",
+      "risk": "medium", "aggression": "neutre", "base_score": 60,
+      "requirements": [], "avoid_if": [],
+      "explanation": "Descends en ville par le nord, appuie-toi sur les angles et les batiments."
+    },
+    {
+      "plan_id": "ruin_north_field_safe",
+      "map_id": "ruinberg", "spawn": "north", "roles": ["sniper_medium", "td_sniper", "scout"],
+      "phase": "early", "flank": "field", "anchor": "champ / foret",
+      "risk": "medium", "aggression": "prudent", "base_score": 58,
+      "requirements": [], "avoid_if": ["enemy_light>=3"],
+      "explanation": "Tiens le champ depuis la vegetation, garde une sortie si le flanc cede."
+    }
+  ]
+}

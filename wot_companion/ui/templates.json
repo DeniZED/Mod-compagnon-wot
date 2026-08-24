@@ -1,0 +1,60 @@
+{
+  "version": "templates-2026.08",
+  "language": "fr",
+  "templates": {
+    "initial_plan": {
+      "coach": "{role_label} - {map_label} {spawn}. Privilegie {flank_label} ({anchor}) : {explanation}",
+      "commandant": "{map_label} {spawn}. Va {flank_label}. {anchor}.",
+      "detendu": "Sur {map_label} {spawn}, pars plutot {flank_label} ({anchor}). {explanation}",
+      "silencieux": "{map_label} {spawn} : {flank_label}."
+    },
+    "hp_preserve_early": {
+      "coach": "Tu es deja a {hp_pct}% de HP tres tot. Conserve-les : evite les trades qui te coutent cher maintenant.",
+      "commandant": "HP bas ({hp_pct}%). Joue safe.",
+      "detendu": "On ne va pas cramer nos HP si tot ({hp_pct}%). Temporise un peu.",
+      "silencieux": "HP {hp_pct}% : prudence."
+    },
+    "hp_play_safe": {
+      "coach": "HP a {hp_pct}% : passe en jeu de soutien, cherche des degats sans t'exposer.",
+      "commandant": "HP {hp_pct}%. Recule, soutien.",
+      "detendu": "Plus que {hp_pct}% : joue en retrait maintenant.",
+      "silencieux": "HP {hp_pct}% : retrait."
+    },
+    "tempo_take_initiative": {
+      "coach": "Ca fait {idle_s}s sans contribuer et le nombre le permet : prends l'initiative sur ton secteur.",
+      "commandant": "Inactif {idle_s}s. Avance, prends l'initiative.",
+      "detendu": "{idle_s}s sans rien faire, on peut pousser un peu la.",
+      "silencieux": "Prends l'initiative."
+    },
+    "retreat_flank": {
+      "coach": "Ton flanc ({flank_label}) cede alors que tu as encore tes HP. Prepare un repli vers une position defensive avant d'etre enferme.",
+      "commandant": "Flanc {flank_label} perdu. Replie-toi.",
+      "detendu": "Le flanc {flank_label} part en fumee : decroche pendant qu'il est temps.",
+      "silencieux": "Flanc {flank_label} : replie-toi."
+    },
+    "endgame_advantage": {
+      "coach": "Avantage numerique ({allies_alive} vs {enemies_alive}) : concentrez le feu ensemble pour finir proprement.",
+      "commandant": "{allies_alive}v{enemies_alive}. Focus ensemble.",
+      "detendu": "On est devant ({allies_alive}v{enemies_alive}), on focus et c'est plie.",
+      "silencieux": "Focus groupe."
+    },
+    "endgame_survival": {
+      "coach": "Inferiorite ({allies_alive} vs {enemies_alive}) : priorite survie et vision, ne te fais pas isoler.",
+      "commandant": "{allies_alive}v{enemies_alive}. Survie, vision.",
+      "detendu": "On est derriere ({allies_alive}v{enemies_alive}) : joue la survie et la vision.",
+      "silencieux": "Survie, vision."
+    },
+    "endgame_even": {
+      "coach": "Fin serree ({allies_alive} vs {enemies_alive}) : joue la vision, le cap et le focus, evite le duel inutile.",
+      "commandant": "{allies_alive}v{enemies_alive}. Vision + cap.",
+      "detendu": "Egalite ({allies_alive}v{enemies_alive}), joue malin : vision et cap.",
+      "silencieux": "Vision, cap."
+    },
+    "garage_summary": {
+      "coach": "{line}",
+      "commandant": "{line}",
+      "detendu": "{line}",
+      "silencieux": "{line}"
+    }
+  }
+}

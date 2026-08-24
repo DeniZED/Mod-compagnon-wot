@@ -1,0 +1,70 @@
+{
+  "version": "kb-2026.08",
+  "roles": {
+    "assault_heavy": {
+      "label": "Lourd d'assaut",
+      "class": "heavy",
+      "tags": ["frontline", "brawl", "hp_pool"],
+      "traits": {"armor": "high", "mobility": "low", "view_range": "low"},
+      "reminder": "Impose ton blindage en tete, mais attends le bon tempo pour avancer."
+    },
+    "support_heavy": {
+      "label": "Lourd de soutien",
+      "class": "heavy",
+      "tags": ["second_line", "trade", "hp_pool"],
+      "traits": {"armor": "medium", "mobility": "low", "view_range": "low"},
+      "reminder": "Appuie la ligne lourde depuis la deuxieme position, evite d'ouvrir seul."
+    },
+    "brawler_medium": {
+      "label": "Medium de combat rapproche",
+      "class": "medium",
+      "tags": ["flex", "brawl", "flank"],
+      "traits": {"armor": "medium", "mobility": "high", "view_range": "medium"},
+      "reminder": "Cherche les flancs et les cibles isolees, garde de la mobilite."
+    },
+    "sniper_medium": {
+      "label": "Medium de tir a distance",
+      "class": "medium",
+      "tags": ["vision", "trade", "distance"],
+      "traits": {"armor": "low", "mobility": "high", "view_range": "high"},
+      "reminder": "Garde la distance, exploite la vision, offre-toi toujours une sortie de repli."
+    },
+    "scout": {
+      "label": "Eclaireur",
+      "class": "light",
+      "tags": ["vision", "assist", "mobility"],
+      "traits": {"armor": "low", "mobility": "very_high", "view_range": "very_high"},
+      "reminder": "Prioritise le spot utile et la survie ; ta vision vaut plus que tes degats."
+    },
+    "td_sniper": {
+      "label": "Chasseur a distance",
+      "class": "td",
+      "tags": ["distance", "camo", "trade"],
+      "traits": {"armor": "low", "mobility": "low", "view_range": "medium"},
+      "reminder": "Tiens une ligne de tir couverte par la vision alliee, ne te fais pas flanquer."
+    },
+    "td_assault": {
+      "label": "Chasseur d'assaut",
+      "class": "td",
+      "tags": ["frontline", "armor", "trade"],
+      "traits": {"armor": "high", "mobility": "medium", "view_range": "low"},
+      "reminder": "Appuie une poussee ou tiens un angle blinde, evite les terrains ouverts sans support."
+    }
+  },
+  "vehicles": {
+    "leopard_1": "sniper_medium",
+    "e50m": "brawler_medium",
+    "is7": "assault_heavy",
+    "e100": "support_heavy",
+    "t110e5": "assault_heavy",
+    "ebr_105": "scout",
+    "t100_lt": "scout",
+    "grille_15": "td_sniper",
+    "obj_268": "td_assault",
+    "bat_chatillon": "sniper_medium",
+    "amx_13_105": "scout",
+    "cent_ax": "sniper_medium",
+    "obj_140": "brawler_medium",
+    "type_5_heavy": "assault_heavy"
+  }
+}
