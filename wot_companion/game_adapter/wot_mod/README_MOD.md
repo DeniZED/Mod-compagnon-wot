@@ -4,6 +4,18 @@ Ce mod est la **source d'événements réelle** : il tourne dans World of Tanks 
 transmet au compagnon externe, via un socket local, uniquement des informations
 **normalement disponibles au joueur** (Fair Play garanti par construction).
 
+> ⚙️ **Version de Python du client.** Les clients de release n'exécutent pas le
+> code source `.py` embarqué dans un `.wotmod` : ils n'importent que du **bytecode
+> `.pyc` compilé pour LEUR version exacte de Python**. Pour connaître cette
+> version, lire le *magic number* (4 premiers octets) d'un `.pyc` d'un mod qui
+> fonctionne : `03f30d0a` = Python 2.7, `550d0d0a` = Python 3.8. Compiler ensuite
+> le mod avec la même version :
+> ```
+> python2.7 -c "import py_compile; py_compile.compile('mod_wotcompanion.py', cfile='mod_wotcompanion.pyc')"
+> ```
+> puis empaqueter `meta.xml` + `res/scripts/client/gui/mods/mod_wotcompanion.pyc`
+> dans un ZIP **STORED** renommé `.wotmod`. La source est compatible 2.7 et 3.x.
+
 > ⚠️ **Statut : POC.** Les points marqués `# POC:` dans `mod_wotcompanion.py`
 > dépendent de l'API interne du client WoT, qui varie selon la version. Le mod
 > est **défensif** (tout est en `try/except` : il ne peut pas faire planter le
