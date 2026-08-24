@@ -39,12 +39,13 @@ SCHEMA_VERSION = "1.0"
 BUILD_TAG = "b2"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
+    # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
     "05_prohorovka": "prokhorovka", "prohorovka": "prokhorovka",
-    "amigo_town": "himmelsdorf", "01_karelia_himmelsdorf": "himmelsdorf",
-    "himmelsdorf": "himmelsdorf",
-    "10_hills": "malinovka", "malinovka": "malinovka", "02_malinovka": "malinovka",
-    "mines": "mines", "35_iranian_mine": "mines",
+    "04_himmelsdorf": "himmelsdorf", "himmelsdorf": "himmelsdorf",
+    "02_malinovka": "malinovka", "malinovka": "malinovka",
+    "10_hills": "mines", "mines": "mines",              # Mines = 10_hills en interne
     "08_ruinberg": "ruinberg", "ruinberg": "ruinberg",
+    "06_ensk": "ensk", "06_ensk_big": "ensk", "ensk": "ensk",
 }
 VEHICLE_NAME_MAP = {
     "Leopard1": "leopard_1", "G65_Leopard1": "leopard_1",
