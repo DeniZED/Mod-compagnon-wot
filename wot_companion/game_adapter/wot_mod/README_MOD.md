@@ -58,11 +58,19 @@ python -m wot_companion.game_adapter.wot_mod.build_wotmod
 
 ## Étape 4 — Valider les données (définition de fini du POC, Annexe C)
 
-Ouvre `python.log` du jeu
-(`%APPDATA%\Wargaming.net\WorldOfTanks\python.log` ou dans le dossier du jeu) et
-cherche les lignes `[WoTCompanion]`. Le mode DISCOVERY y liste les attributs de
-`player` et `arena`. Pour **chaque** donnée du POC, on note : source, fréquence,
-stabilité, statut Fair Play :
+Le mode DISCOVERY écrit un rapport **valeur par valeur** à deux moments (au
+départ, puis ~6 s plus tard quand l'arène est peuplée), dans **deux endroits** :
+
+- le fichier dédié **`wot_companion_discovery.log`** (dans le dossier de travail
+  du jeu) — le plus simple à retrouver et à me coller ;
+- `python.log` (`%APPDATA%\Wargaming.net\WorldOfTanks\python.log`), lignes
+  `[WoTCompanion]`.
+
+**Colle-moi le bloc `===== DISCOVERY =====`** : il contient exactement ce qu'il
+me faut (nom de carte brut, descripteur du char, tags de classe, échantillon
+d'`arena.vehicles`, HP/maxHP…) pour corriger les hooks et les tables de
+normalisation en un seul aller-retour. Pour **chaque** donnée du POC, on note :
+source, fréquence, stabilité, statut Fair Play :
 
 | Donnée | Événement émis | À vérifier dans les logs |
 |--------|----------------|--------------------------|

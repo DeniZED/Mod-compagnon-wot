@@ -13,15 +13,17 @@ composition au chargement, HP propre, degats/assist propres, comptes de
 vehicules vivants, temps. Il ne lit AUCUNE donnee ennemie cachee (reload,
 position non spot, direction de canon), n'automatise rien.
 
-STATUT : POC. Les points marques "# POC:" dependent de l'API interne du client
-et doivent etre valides/ajustes sur la version reelle de WoT. Tout est enveloppe
-dans des try/except : une erreur d'adapter ne doit jamais faire planter le jeu
-(NFR-007). Le mode DISCOVERY (voir DISCOVERY=True) journalise les attributs
-disponibles dans python.log pour faciliter cette validation.
+STATUT : POC. Les lectures d'etat tentent PLUSIEURS chemins d'API connus (les
+noms varient selon la version). Tout est enveloppe dans des try/except : une
+erreur d'adapter ne doit jamais faire planter le jeu (NFR-007). Le mode
+DISCOVERY (DISCOVERY=True) ecrit un rapport complet, valeur par valeur, dans
+python.log ET dans un fichier dedie `wot_companion_discovery.log` : il suffit de
+me le coller pour que j'ajuste les hooks en un seul aller-retour.
 """
 from __future__ import absolute_import
 
 import json
+import os
 import socket
 import threading
 import time
@@ -31,52 +33,81 @@ import traceback
 HOST = "127.0.0.1"
 PORT = 47800
 POLL_INTERVAL_S = 2.0          # cadence de lecture d'etat (impact perf faible)
-RECONNECT_BACKOFF_S = 3.0
-DISCOVERY = True               # journalise les attributs disponibles (POC)
+DISCOVERY = True               # rapport de decouverte (a passer a False apres POC)
+DISCOVERY_DELAY_S = 6.0        # 2e rapport quand l'arene est bien peuplee
 SCHEMA_VERSION = "1.0"
 
 # Normalisation des cartes (geometryName WoT -> map_id du moteur). A completer.
 MAP_NAME_MAP = {
-    "05_prohorovka": "prokhorovka",
-    "prohorovka": "prokhorovka",
-    "amigo_town": "himmelsdorf",
-    "01_karelia_himmelsdorf": "himmelsdorf",
+    "05_prohorovka": "prokhorovka", "prohorovka": "prokhorovka",
+    "amigo_town": "himmelsdorf", "01_karelia_himmelsdorf": "himmelsdorf",
     "himmelsdorf": "himmelsdorf",
-    "10_hills": "malinovka",
-    "malinovka": "malinovka",
-    "02_malinovka": "malinovka",
-    "mines": "mines",
-    "35_iranian_mine": "mines",
-    "08_ruinberg": "ruinberg",
-    "ruinberg": "ruinberg",
+    "10_hills": "malinovka", "malinovka": "malinovka", "02_malinovka": "malinovka",
+    "mines": "mines", "35_iranian_mine": "mines",
+    "08_ruinberg": "ruinberg", "ruinberg": "ruinberg",
 }
 
 # Normalisation de quelques chars (nom de descripteur -> vehicle_id du moteur).
-# Elargir au fur et a mesure ; un char inconnu envoie quand meme sa classe.
 VEHICLE_NAME_MAP = {
-    "Leopard1": "leopard_1",
-    "G65_Leopard1": "leopard_1",
-    "E-50 Ausf. M": "e50m",
-    "G78_E-50_Ausf_M": "e50m",
-    "IS-7": "is7",
-    "R99_IS-7": "is7",
-    "E-100": "e100",
-    "G88_E-100": "e100",
-    "T110E5": "t110e5",
-    "A86_T110E5": "t110e5",
+    "Leopard1": "leopard_1", "G65_Leopard1": "leopard_1",
+    "E-50 Ausf. M": "e50m", "G78_E-50_Ausf_M": "e50m",
+    "IS-7": "is7", "R99_IS-7": "is7",
+    "E-100": "e100", "G88_E-100": "e100",
+    "T110E5": "t110e5", "A86_T110E5": "t110e5",
 }
 
+_CLASS_TAGS = (
+    ("heavyTank", "heavy"), ("mediumTank", "medium"), ("lightTank", "light"),
+    ("AT-SPG", "td"), ("SPG", "spg"),
+)
 
+
+# --- Journalisation ----------------------------------------------------------
 def _log(msg):
     """Ecrit dans python.log (LOG_NOTE si dispo, sinon print)."""
+    line = "[WoTCompanion] " + str(msg)
     try:
         import debug_utils
-        debug_utils.LOG_NOTE("[WoTCompanion] " + str(msg))
+        debug_utils.LOG_NOTE(line)
     except Exception:
         try:
-            print("[WoTCompanion] " + str(msg))
+            print(line)
         except Exception:
             pass
+
+
+def _discovery_log(msg):
+    """Rapport de decouverte : python.log + fichier dedie (best effort)."""
+    _log(msg)
+    try:
+        path = os.path.join(os.getcwd(), "wot_companion_discovery.log")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(str(msg) + "\n")
+    except Exception:
+        pass
+
+
+def _first(*getters):
+    """Retourne la 1re valeur non-None obtenue sans exception parmi getters."""
+    for g in getters:
+        try:
+            v = g()
+            if v is not None:
+                return v
+        except Exception:
+            continue
+    return None
+
+
+def _probe(label, getter):
+    """Evalue getter() et journalise le resultat (mode DISCOVERY)."""
+    try:
+        val = getter()
+        _discovery_log("  OK   %-28s = %r" % (label, val))
+        return val
+    except Exception as exc:
+        _discovery_log("  FAIL %-28s : %s" % (label, exc))
+        return None
 
 
 # --- Client socket non bloquant ---------------------------------------------
@@ -93,11 +124,10 @@ class _Sender(object):
         if self._sock is not None:
             return True
         try:
-            s = socket.create_connection((self.host, self.port), timeout=2.0)
-            self._sock = s
+            self._sock = socket.create_connection((self.host, self.port), timeout=2.0)
             _log("Connecte au compagnon %s:%d" % (self.host, self.port))
             return True
-        except Exception as exc:
+        except Exception:
             self._sock = None
             return False
 
@@ -118,90 +148,113 @@ class _Sender(object):
                 self._sock.sendall(line)
                 return True
             except Exception:
-                try:
-                    self._sock.close()
-                except Exception:
-                    pass
-                self._sock = None
+                self._close_locked()
                 return False
+
+    def _close_locked(self):
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
 
     def close(self):
         with self._lock:
-            if self._sock is not None:
-                try:
-                    self._sock.close()
-                except Exception:
-                    pass
-                self._sock = None
+            self._close_locked()
 
 
-# --- Lecture d'etat du client (POC) -----------------------------------------
-def _player():
-    import BigWorld
-    return BigWorld.player()
-
-
+# --- Normalisation -----------------------------------------------------------
 def _normalize_map(geometry_name):
     if not geometry_name:
         return None
     key = str(geometry_name).lower()
     if key in MAP_NAME_MAP:
         return MAP_NAME_MAP[key]
-    # tente le dernier segment (ex: "spaces/05_prohorovka" -> "05_prohorovka")
     tail = key.replace("\\", "/").split("/")[-1]
     return MAP_NAME_MAP.get(tail, tail)
+
+
+def _class_from_tags(tags):
+    try:
+        for tag, klass in _CLASS_TAGS:
+            if tag in tags:
+                return klass
+    except Exception:
+        pass
+    return None
 
 
 def _normalize_vehicle(type_descriptor):
     """Retourne (vehicle_id, class) a partir du descripteur du char joueur."""
     try:
-        name = getattr(type_descriptor.type, "name", None) or ""
-        short = name.split(":")[-1]
-        vid = VEHICLE_NAME_MAP.get(short, VEHICLE_NAME_MAP.get(name))
-        klass = None
-        tags = getattr(type_descriptor.type, "tags", set())
-        for t in ("heavyTank", "mediumTank", "lightTank", "AT-SPG", "SPG"):
-            if t in tags:
-                klass = {"heavyTank": "heavy", "mediumTank": "medium",
-                         "lightTank": "light", "AT-SPG": "td", "SPG": "spg"}[t]
-                break
-        if vid is None:
+        vtype = getattr(type_descriptor, "type", type_descriptor)
+        name = getattr(vtype, "name", None) or ""
+        short = str(name).split(":")[-1]
+        vid = VEHICLE_NAME_MAP.get(short) or VEHICLE_NAME_MAP.get(name)
+        klass = _class_from_tags(getattr(vtype, "tags", ()) or ())
+        if vid is None and short:
             vid = short.lower()  # fallback : nom brut normalise
         return vid, klass
     except Exception:
         return None, None
 
 
-def _read_composition(arena, my_team):
-    """Composition connue au chargement (classes agregees par camp)."""
-    ally = {}
-    enemy = {}
-    ally_n = 0
-    enemy_n = 0
-    try:
-        for vid, info in arena.vehicles.items():  # POC: structure a valider
+# --- Acces client, multi-chemins (POC) --------------------------------------
+def _player():
+    import BigWorld
+    return BigWorld.player()
+
+
+def _get_arena(p):
+    import BigWorld
+    return _first(lambda: p.arena, lambda: BigWorld.player().arena)
+
+
+def _get_geometry(arena):
+    return _first(
+        lambda: arena.arenaType.geometryName,
+        lambda: arena.arenaType.geometry,
+        lambda: arena.arenaType.name,
+    )
+
+
+def _get_vehicle_descriptor(p):
+    return _first(
+        lambda: p.vehicleTypeDescriptor,
+        lambda: p.vehicle.typeDescriptor,
+        lambda: p.getVehicleDescriptor(),
+    )
+
+
+def _get_health(p):
+    veh = _first(lambda: p.vehicle, lambda: p.getVehicleAttached())
+    hp = _first(lambda: veh.health, lambda: p.vehicle.health)
+    max_hp = _first(
+        lambda: veh.maxHealth,
+        lambda: veh.typeDescriptor.maxHealth,
+        lambda: p.vehicle.maxHealth,
+    )
+    return hp, max_hp
+
+
+def _iter_arena_vehicles(arena):
+    """Retourne la liste (vid, team, class, isAlive) des vehicules connus."""
+    out = []
+    vehicles = _first(lambda: arena.vehicles)
+    if not vehicles:
+        return out
+    for vid, info in vehicles.items():
+        try:
             team = info.get("team")
             descr = info.get("vehicleType")
-            klass = None
-            try:
-                tags = descr.type.tags
-                for t, k in (("heavyTank", "heavy"), ("mediumTank", "medium"),
-                             ("lightTank", "light"), ("AT-SPG", "td"), ("SPG", "spg")):
-                    if t in tags:
-                        klass = k
-                        break
-            except Exception:
-                pass
-            bucket = ally if team == my_team else enemy
-            if team == my_team:
-                ally_n += 1
-            else:
-                enemy_n += 1
-            if klass:
-                bucket[klass] = bucket.get(klass, 0) + 1
-    except Exception:
-        _log("Composition indisponible:\n" + traceback.format_exc())
-    return ally, enemy, ally_n, enemy_n
+            vtype = getattr(descr, "type", descr)
+            klass = _class_from_tags(getattr(vtype, "tags", ()) or ())
+            is_alive = info.get("isAlive", True)
+            out.append((vid, team, klass, is_alive))
+        except Exception:
+            continue
+    return out
 
 
 # --- Cycle de vie de la bataille --------------------------------------------
@@ -213,7 +266,6 @@ class CompanionBridge(object):
         self._polling = False
         self._start_time = None
 
-    # Appele quand l'avatar du joueur est pret (debut de bataille).
     def on_avatar_ready(self):
         try:
             self._on_battle_start()
@@ -227,54 +279,54 @@ class CompanionBridge(object):
             _log("on_avatar_non_player:\n" + traceback.format_exc())
 
     def _on_battle_start(self):
-        import BigWorld
         p = _player()
-        arena = getattr(p, "arena", None)
+        arena = _get_arena(p)
         self.battle_id = "wot-%d" % int(time.time())
-        self.my_team = getattr(p, "team", None)
+        self.my_team = _first(lambda: p.team)
         self._start_time = time.time()
-
-        if DISCOVERY:
-            _log("DISCOVERY player attrs: " + ", ".join(sorted(dir(p)))[:2000])
-            if arena is not None:
-                _log("DISCOVERY arena attrs: " + ", ".join(sorted(dir(arena)))[:2000])
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
 
         # Char du joueur (BAT-002)
-        try:
-            descr = getattr(p, "vehicleTypeDescriptor", None) or \
-                getattr(getattr(p, "vehicle", None), "typeDescriptor", None)
-            vid, klass = _normalize_vehicle(descr)
-            self.sender.send("PLAYER_VEHICLE",
-                             {"vehicle_id": vid, "class": klass}, self.battle_id)
-        except Exception:
-            _log("PLAYER_VEHICLE:\n" + traceback.format_exc())
+        vid, klass = _normalize_vehicle(_get_vehicle_descriptor(p))
+        self.sender.send("PLAYER_VEHICLE", {"vehicle_id": vid, "class": klass},
+                         self.battle_id)
 
         # Carte + spawn (BAT-003)
-        try:
-            geom = getattr(getattr(arena, "arenaType", None), "geometryName", None)
-            map_id = _normalize_map(geom)
-            if map_id:
-                self.sender.send("MAP_INFO", {"map_id": map_id}, self.battle_id)
-            # POC: le spawn "north/south" derive de la position de depart ou du
-            # team. Heuristique simple ici, a valider par observation.
-            spawn = "north" if self.my_team == 1 else "south"
-            self.sender.send("SPAWN_INFO", {"spawn": spawn}, self.battle_id)
-        except Exception:
-            _log("MAP/SPAWN:\n" + traceback.format_exc())
+        map_id = _normalize_map(_get_geometry(arena))
+        if map_id:
+            self.sender.send("MAP_INFO", {"map_id": map_id}, self.battle_id)
+        # POC: heuristique de spawn a valider par observation.
+        spawn = "north" if self.my_team == 1 else "south"
+        self.sender.send("SPAWN_INFO", {"spawn": spawn}, self.battle_id)
 
         # Composition (BAT-004)
-        try:
-            ally, enemy, an, en = _read_composition(arena, self.my_team)
-            self.sender.send("TEAM_COMPOSITION", {
-                "ally_classes": ally, "enemy_classes": enemy,
-                "ally_count": an, "enemy_count": en,
-            }, self.battle_id)
-        except Exception:
-            _log("TEAM_COMPOSITION:\n" + traceback.format_exc())
+        self._send_composition(arena)
+
+        if DISCOVERY:
+            self.discover(p, arena, phase="start")
+            self._schedule(DISCOVERY_DELAY_S,
+                           lambda: self.discover(_player(), _get_arena(_player()),
+                                                 phase="delayed"))
 
         self._start_polling()
+
+    def _send_composition(self, arena):
+        ally, enemy = {}, {}
+        an = en = 0
+        for vid, team, klass, _alive in _iter_arena_vehicles(arena):
+            if team == self.my_team:
+                an += 1
+                if klass:
+                    ally[klass] = ally.get(klass, 0) + 1
+            else:
+                en += 1
+                if klass:
+                    enemy[klass] = enemy.get(klass, 0) + 1
+        self.sender.send("TEAM_COMPOSITION", {
+            "ally_classes": ally, "enemy_classes": enemy,
+            "ally_count": an, "enemy_count": en,
+        }, self.battle_id)
 
     def _on_battle_end(self):
         self._polling = False
@@ -282,9 +334,14 @@ class CompanionBridge(object):
             self.sender.send("BATTLE_END", {"battle_id": self.battle_id}, self.battle_id)
         self.battle_id = None
 
-    # Boucle de lecture d'etat periodique (HP, temps, comptes).
+    def _schedule(self, delay, fn):
+        try:
+            import BigWorld
+            BigWorld.callback(delay, fn)
+        except Exception:
+            _log("scheduling indisponible:\n" + traceback.format_exc())
+
     def _start_polling(self):
-        import BigWorld
         self._polling = True
 
         def tick():
@@ -294,48 +351,58 @@ class CompanionBridge(object):
                 self._poll_once()
             except Exception:
                 _log("poll:\n" + traceback.format_exc())
-            try:
-                BigWorld.callback(POLL_INTERVAL_S, tick)
-            except Exception:
-                pass
+            self._schedule(POLL_INTERVAL_S, tick)
 
-        try:
-            BigWorld.callback(POLL_INTERVAL_S, tick)
-        except Exception:
-            _log("Impossible de programmer le polling:\n" + traceback.format_exc())
+        self._schedule(POLL_INTERVAL_S, tick)
 
     def _poll_once(self):
         p = _player()
         elapsed = time.time() - (self._start_time or time.time())
         self.sender.send("CLOCK_TICK", {"elapsed_s": round(elapsed, 1)}, self.battle_id)
 
-        # HP propre (BAT / information propre)
-        try:
-            veh = getattr(p, "vehicle", None)
-            hp = getattr(veh, "health", None)
-            max_hp = getattr(veh, "maxHealth", None)
-            if hp is not None and max_hp:
-                self.sender.send("PLAYER_HP_CHANGED",
-                                 {"hp": max(0, hp), "max_hp": max_hp}, self.battle_id)
-        except Exception:
-            pass
+        hp, max_hp = _get_health(p)
+        if hp is not None and max_hp:
+            self.sender.send("PLAYER_HP_CHANGED",
+                             {"hp": max(0, hp), "max_hp": max_hp}, self.battle_id)
 
-        # Comptes de vehicules vivants (visibles au tableau)
-        try:
-            arena = getattr(p, "arena", None)
-            allies = enemies = 0
-            for vid, info in arena.vehicles.items():
-                if not info.get("isAlive", True):
-                    continue
-                if info.get("team") == self.my_team:
-                    allies += 1
-                else:
-                    enemies += 1
+        arena = _get_arena(p)
+        allies = enemies = 0
+        counted = False
+        for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
+            counted = True
+            if not is_alive:
+                continue
+            if team == self.my_team:
+                allies += 1
+            else:
+                enemies += 1
+        if counted:
             self.sender.send("TEAM_COUNT",
                              {"allies_alive": allies, "enemies_alive": enemies},
                              self.battle_id)
-        except Exception:
-            pass
+
+    # ---- Mode DISCOVERY : rapport valeur par valeur (POC) ------------------
+    def discover(self, p, arena, phase):
+        _discovery_log("===== DISCOVERY (%s) %s =====" %
+                       (phase, time.strftime("%Y-%m-%d %H:%M:%S")))
+        _probe("player.team", lambda: p.team)
+        _probe("player.playerVehicleID", lambda: p.playerVehicleID)
+        _probe("arena.arenaType.geometryName", lambda: arena.arenaType.geometryName)
+        _probe("normalized map_id", lambda: _normalize_map(_get_geometry(arena)))
+        descr = _get_vehicle_descriptor(p)
+        _probe("vehicle descriptor type.name", lambda: descr.type.name)
+        _probe("vehicle descriptor type.tags", lambda: list(descr.type.tags))
+        _probe("normalized (vehicle_id,class)", lambda: _normalize_vehicle(descr))
+        hp, max_hp = _get_health(p)
+        _discovery_log("  hp=%r max_hp=%r" % (hp, max_hp))
+        vehicles = _iter_arena_vehicles(arena)
+        _discovery_log("  arena.vehicles: %d entrees" % len(vehicles))
+        for row in vehicles[:4]:
+            _discovery_log("    sample vid=%r team=%r class=%r alive=%r" % row)
+        _probe("arena.period", lambda: arena.period)
+        _probe("arena.periodEndTime", lambda: arena.periodEndTime)
+        _discovery_log("Pour ajuster les hooks, colle ce bloc au developpeur.")
+        _discovery_log("=====================================")
 
 
 # --- Point d'entree du mod ---------------------------------------------------
@@ -348,8 +415,6 @@ def init():
     try:
         _bridge = CompanionBridge()
         _log("Mod WoT Companion Bridge charge (POC).")
-
-        # Branche les evenements de cycle de vie de l'avatar.
         try:
             from PlayerEvents import g_playerEvents
             g_playerEvents.onAvatarReady += _bridge.on_avatar_ready          # POC
@@ -362,7 +427,6 @@ def init():
 
 
 def fini():
-    """Appele au dechargement (si supporte)."""
     global _bridge
     if _bridge is not None:
         try:
@@ -372,8 +436,6 @@ def fini():
         _bridge = None
 
 
-# Certaines versions appellent init() automatiquement ; sinon, l'import du module
-# suffit a l'enregistrer. On tente un init immediat protege.
 try:
     init()
 except Exception:
