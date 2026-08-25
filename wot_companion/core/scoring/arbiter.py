@@ -69,6 +69,14 @@ class AdviceArbiter:
         # il empeche de repeter le meme conseil tant que sa condition persiste
         # (REC-03). Un critique ne contourne que le cooldown GLOBAL et le
         # plafond early game, afin de pouvoir interrompre un conseil mineur.
+        # Conseils positifs : desactivables, et espaces par un cooldown dedie
+        # (rares par nature, section 11.1) pour rester sinceres et non intrusifs.
+        if cand.category is AdviceCategory.POSITIVE:
+            if not a.positive_enabled:
+                return False
+            if (st.last_positive_s is not None
+                    and now_s - st.last_positive_s < a.positive_rare_cooldown_s):
+                return False
         last_cat = st.last_category_s.get(cand.category.value)
         if last_cat is not None and now_s - last_cat < a.category_cooldown_s:
             return False

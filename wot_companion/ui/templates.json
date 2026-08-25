@@ -68,6 +68,12 @@
       "detendu": "Egalite ({allies_alive}v{enemies_alive}), joue malin : vision et cap.",
       "silencieux": "Vision, cap."
     },
+    "positive_healthy": {
+      "coach": "Beau jeu : tu es encore a {hp_pct}% de HP a ce stade. Continue de choisir tes echanges, ca paie.",
+      "commandant": "HP sains ({hp_pct}%). Bien joue, continue.",
+      "detendu": "Nickel, {hp_pct}% de HP a ce stade : tu geres bien ta caisse.",
+      "silencieux": "Bien joue."
+    },
     "garage_summary": {
       "coach": "{line}",
       "commandant": "{line}",

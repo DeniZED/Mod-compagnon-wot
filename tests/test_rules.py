@@ -6,6 +6,7 @@ from wot_companion.core.context.features import FeatureBuilder
 from wot_companion.core.rules.base import RuleContext
 from wot_companion.core.rules.hp_management import HpManagementRule
 from wot_companion.core.rules.initial_plan import InitialPlanRule
+from wot_companion.core.rules.positive import PositiveReinforcementRule
 from wot_companion.core.rules.retreat import RetreatRule
 from wot_companion.core.rules.rotation import NumericAwarenessRule
 from wot_companion.core.rules.tempo import TempoInitiativeRule
@@ -133,3 +134,34 @@ def test_rotation_rule_no_push_when_low_hp():
     ctx.allies_alive, ctx.enemies_alive = 10, 7
     ctx.hp_ratio = 0.3
     assert NumericAwarenessRule().evaluate(_rc(ctx)) == []
+
+
+def test_positive_rule_fires_when_healthy_midgame():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300  # hors ouverture
+    ctx.hp_ratio = 0.85
+    out = PositiveReinforcementRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "ENCOURAGE_HP"
+    assert out[0].severity.value == "POSITIVE"
+
+
+def test_positive_rule_silent_in_early_phase():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 30
+    ctx.hp_ratio = 0.95
+    assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
+
+
+def test_positive_rule_silent_when_hurt():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.hp_ratio = 0.4  # abime -> pas de compliment
+    assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
+
+
+def test_positive_rule_silent_when_outnumbered():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.hp_ratio = 0.9
+    ctx.allies_alive, ctx.enemies_alive = 5, 9  # nette inferiorite
+    assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
