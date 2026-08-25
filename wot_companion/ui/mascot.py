@@ -59,8 +59,8 @@ def expression_for(category: str | None, severity: str | None,
     if sev == "POSITIVE" or cat == "POSITIVE":
         return "positive"
     if cat == "REACTION":
-        # Tir recu : inquiet si on decroche (HP bas), sinon determine (on encaisse).
-        return "worried" if (action or "") == "BREAK_CONTACT" else "determined"
+        # Tir recu : inquiet si on doit fuir/se cacher, determine si on encaisse.
+        return "worried" if (action or "") in ("BREAK_CONTACT", "BREAK_LOS") else "determined"
     if cat == "HP" and (action or "") == "PLAY_SAFE":
         return "grumpy"
     if sev == "ATTENTION":

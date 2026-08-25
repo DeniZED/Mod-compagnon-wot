@@ -168,15 +168,26 @@ def test_positive_rule_silent_when_outnumbered():
     assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
 
 
-def test_reaction_fires_on_recent_damage():
-    ctx = BattleContext(battle_id="b", start_ms=0)
+def test_reaction_fires_on_recent_damage_armored():
+    ctx = BattleContext(battle_id="b", start_ms=0, vehicle_role="support_heavy")
     ctx.elapsed_s = 200
     ctx.hp_ratio = 0.7
     ctx.last_damage_taken_s = 199  # touche il y a 1 s
     ctx.last_damage_taken_ratio = 0.15
     out = HitTakenReactionRule().evaluate(_rc(ctx))
-    assert len(out) == 1 and out[0].action == "USE_ARMOR"
+    assert len(out) == 1 and out[0].action == "USE_ARMOR"  # char blinde -> angle
     assert out[0].min_interval_s > 0  # cadence propre a la reaction
+
+
+def test_reaction_fragile_role_breaks_los():
+    # Un char fragile (sniper) qui encaisse doit casser la ligne de vue, pas angler.
+    ctx = BattleContext(battle_id="b", start_ms=0, vehicle_role="sniper_medium")
+    ctx.elapsed_s = 200
+    ctx.hp_ratio = 0.7
+    ctx.last_damage_taken_s = 200
+    ctx.last_damage_taken_ratio = 0.1
+    out = HitTakenReactionRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "BREAK_LOS"
 
 
 def test_reaction_silent_without_recent_damage():

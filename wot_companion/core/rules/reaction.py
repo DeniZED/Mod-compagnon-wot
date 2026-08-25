@@ -22,8 +22,13 @@ HEAVY_HIT_RATIO = 0.12
 REACTION_INTERVAL_S = 9.0
 
 
-# Variantes de texte pour un coup "standard", pour eviter la repetition a l'ecran.
+# Variantes de texte pour un coup "standard" (char qui peut encaisser).
 _HIT_VARIANTS = ("reaction_hit", "reaction_hit2", "reaction_hit3")
+# Roles capables d'encaisser (jouer le blindage). Les autres (snipers, scout)
+# ne tiennent pas sous le feu : on leur conseille de casser la ligne de vue.
+_ARMORED_ROLES = frozenset({
+    "assault_heavy", "support_heavy", "brawler_medium", "td_assault",
+})
 
 
 class HitTakenReactionRule(Rule):
@@ -41,12 +46,18 @@ class HitTakenReactionRule(Rule):
 
         hp = f.hp_ratio if f.hp_ratio is not None else 1.0
         heavy = f.damage_taken_ratio >= HEAVY_HIT_RATIO
+        armored = rc.battle.vehicle_role in _ARMORED_ROLES
 
-        # Choix du micro-conseil selon l'etat : bas + touche = decrocher ;
-        # sinon = jouer le blindage / rester couvert (avec variantes de texte).
+        # Choix du micro-conseil selon l'etat ET le rôle :
+        # - HP bas : decrocher, quel que soit le rôle ;
+        # - char fragile (sniper/scout) : casser la ligne de vue, il n'encaisse pas ;
+        # - char blinde : jouer le blindage (angle), avec variantes de texte.
         if hp < 0.35:
             action, key, sev = "BREAK_CONTACT", "reaction_hit_low", Severity.ATTENTION
             urgency = 0.7
+        elif not armored:
+            action, key, sev = "BREAK_LOS", "reaction_hit_fragile", Severity.ATTENTION
+            urgency = 0.55
         elif heavy:
             action, key, sev = "USE_ARMOR", "reaction_hit_heavy", Severity.INFO
             urgency = 0.5

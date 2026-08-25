@@ -92,6 +92,12 @@
       "detendu": "Ouch, ca pique ({hp_pct}%) : mets-toi a couvert.",
       "silencieux": "Couvre-toi."
     },
+    "reaction_hit_fragile": {
+      "coach": "Tu encaisses alors que ton char ne tient pas : casse la ligne de vue, repositionne a couvert.",
+      "commandant": "Fragile. Casse la vue, couvre-toi.",
+      "detendu": "Tu tiens pas les coups la : sors de la ligne de vue.",
+      "silencieux": "Casse la vue."
+    },
     "reaction_hit_low": {
       "coach": "HP bas ({hp_pct}%) et tu prends encore des coups : decroche vers une position sûre.",
       "commandant": "HP {hp_pct}%. Decroche !",

@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b2"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b3"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -622,8 +622,54 @@ class CompanionBridge(object):
         for row in vehicles[:4]:
             _discovery_log("    sample vid=%r team=%r class=%r alive=%r" % row)
         _probe("arena.period", lambda: arena.period)
+        self._discover_positions(p, arena)
         _discovery_log("Colle ce bloc au developpeur pour ajuster les hooks.")
         _discovery_log("=====================================")
+
+    def _discover_positions(self, p, arena):
+        """Sonde les positions LISIBLES cote joueur (Fair Play) : sa propre
+        position + les positions du feed minimap (alliees, et ennemis DEJA
+        spottes). Aucune lecture d'ennemi non spotte. On loggue seulement ce qui
+        marche, pour cabler ensuite les regles spatiales."""
+        _discovery_log("  --- POSITIONS (Fair Play : soi + minimap) ---")
+        # 1) Position du joueur (plusieurs accesseurs connus).
+        _probe("own getOwnVehiclePosition", lambda: tuple(p.getOwnVehiclePosition()))
+        _probe("own player.position", lambda: tuple(p.position))
+        _probe("own entity.position",
+               lambda: tuple(__import__("BigWorld").entity(p.playerVehicleID).position))
+        # 2) Feed de positions facon minimap (dict vehicleID -> position).
+        def _positions_dict():
+            import BigWorld
+            src = _first(
+                lambda: arena.positions,
+                lambda: p.arena.positions,
+                lambda: BigWorld.player().arena.positions,
+            )
+            return src
+        try:
+            pos = _positions_dict()
+            if pos:
+                items = list(pos.items())
+                _discovery_log("  OK   arena.positions : %d entrees" % len(items))
+                team_by_vid = {}
+                for vid, team, klass, alive in _iter_arena_vehicles(arena):
+                    team_by_vid[vid] = team
+                for vid, xz in items[:6]:
+                    _discovery_log("    pos vid=%r team=%r xz=%r"
+                                   % (vid, team_by_vid.get(vid), tuple(xz) if xz is not None else None))
+            else:
+                _discovery_log("  FAIL arena.positions : introuvable/vide")
+        except Exception as exc:
+            _discovery_log("  FAIL arena.positions : %s" % exc)
+        # 3) Piste alternative : controleur minimap / vehicles info du sessionProvider.
+        try:
+            sp = _resolve_session_provider()
+            _probe("sessionProvider.shared.feedback",
+                   lambda: sp.shared.feedback is not None)
+            _probe("sessionProvider arenaDP getVehiclesInfoIterator",
+                   lambda: hasattr(sp.getArenaDP(), "getVehiclesInfoIterator"))
+        except Exception as exc:
+            _discovery_log("  FAIL sessionProvider positions : %s" % exc)
 
 
 # --- Point d'entree du mod ---------------------------------------------------
