@@ -40,7 +40,10 @@ class BattleRecord:
 class HistoryStore:
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self.db_path = str(db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        # check_same_thread=False : avec l'overlay graphique, le moteur tourne dans
+        # un thread separe de la boucle Tk. Les acces DB restent serialises (seul le
+        # thread moteur ecrit), donc c'est sûr.
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._migrate()
 
@@ -59,13 +62,17 @@ class HistoryStore:
     def record_from_context(self, ctx: BattleContext) -> BattleRecord:
         """Construit et enregistre un BattleRecord depuis un contexte termine."""
         hp_lost_early = self._compute_hp_lost_early(ctx)
+        # Survie : donnee autoritaire du resultat si disponible, sinon heuristique HP.
+        if ctx.result_survived is not None:
+            survived = ctx.result_survived
+        else:
+            survived = bool(ctx.hp_ratio and ctx.hp_ratio > 0)
         rec = BattleRecord(
             id=ctx.battle_id, map_id=ctx.map_id, spawn=ctx.spawn,
             vehicle_id=ctx.vehicle_id, vehicle_role=ctx.vehicle_role,
             result=ctx.result, damage=ctx.total_damage, assist=ctx.total_assist,
-            survived=bool(ctx.hp_ratio and ctx.hp_ratio > 0)
-            if ctx.result != "defeat_dead" else False,
-            kills=0, hp_ratio_end=ctx.hp_ratio, hp_lost_early=hp_lost_early,
+            survived=survived, kills=ctx.kills,
+            hp_ratio_end=ctx.hp_ratio, hp_lost_early=hp_lost_early,
             started_ms=ctx.start_ms, ended_ms=ctx.end_ms,
         )
         self.save_battle(rec)

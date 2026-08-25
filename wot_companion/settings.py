@@ -65,11 +65,14 @@ class AntiSpamSettings:
 @dataclass
 class UISettings:
     """Reglages d'affichage (section 4.1)."""
-    anchor: str = "bottom_right"
+    anchor: str = "top_right"          # coin d'ancrage (evite la minimap bas-droite)
+    offset_x: int = 0                  # decalage horizontal supplementaire (px)
+    offset_y: int = 0                  # decalage vertical supplementaire (px)
     max_bubble_chars: int = 140
     character_visible: bool = True
     streamer_mode: bool = False
     text_scale: float = 1.0
+    click_through: bool = True         # laisse passer les clics (Windows)
     color_scheme: tuple[str, ...] = ("normal", "attention", "critical", "positive")
 
 

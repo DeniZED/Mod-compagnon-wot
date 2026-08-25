@@ -50,6 +50,16 @@
         "field": "champ / foret",
         "center": "cathedrale / centre"
       }
+    },
+    "ensk": {
+      "label": "Ensk",
+      "note": "Petite carte : ville serree d'un cote, champ/voie ferree de l'autre. Tempo rapide.",
+      "spawns": ["north", "south"],
+      "flanks": {
+        "town": "ville (combat rapproche, lourds)",
+        "field": "champ / voie ferree (vision, tir a distance)",
+        "rail": "remblai de la voie ferree"
+      }
     }
   }
 }

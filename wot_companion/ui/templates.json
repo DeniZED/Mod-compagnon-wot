@@ -8,6 +8,12 @@
       "detendu": "Sur {map_label} {spawn}, pars plutot {flank_label} ({anchor}). {explanation}",
       "silencieux": "{map_label} {spawn} : {flank_label}."
     },
+    "initial_role_reminder": {
+      "coach": "{role_label} : {role_reminder}",
+      "commandant": "{role_label}. {role_reminder}",
+      "detendu": "{role_label} - {role_reminder}",
+      "silencieux": "{role_label}."
+    },
     "hp_preserve_early": {
       "coach": "Tu es deja a {hp_pct}% de HP tres tot. Conserve-les : evite les trades qui te coutent cher maintenant.",
       "commandant": "HP bas ({hp_pct}%). Joue safe.",
@@ -31,6 +37,18 @@
       "commandant": "Flanc {flank_label} perdu. Replie-toi.",
       "detendu": "Le flanc {flank_label} part en fumee : decroche pendant qu'il est temps.",
       "silencieux": "Flanc {flank_label} : replie-toi."
+    },
+    "rotation_advantage": {
+      "coach": "Avantage numerique ({allies_alive} vs {enemies_alive}) : appuie sur ton axe fort avec tes alliees, ne reste pas passif.",
+      "commandant": "{allies_alive}v{enemies_alive}. Appuie l'axe fort.",
+      "detendu": "On a le nombre ({allies_alive}v{enemies_alive}) : pousse l'avantage sur ton flanc.",
+      "silencieux": "Appuie l'axe fort."
+    },
+    "rotation_disadvantage": {
+      "coach": "Tu es en inferiorite ({allies_alive} vs {enemies_alive}) : regroupe-toi vers l'axe fort de l'equipe plutot que de rester isole.",
+      "commandant": "{allies_alive}v{enemies_alive}. Regroupe l'axe fort.",
+      "detendu": "On est en dessous ({allies_alive}v{enemies_alive}), rejoins le gros de l'equipe.",
+      "silencieux": "Regroupe-toi."
     },
     "endgame_advantage": {
       "coach": "Avantage numerique ({allies_alive} vs {enemies_alive}) : concentrez le feu ensemble pour finir proprement.",

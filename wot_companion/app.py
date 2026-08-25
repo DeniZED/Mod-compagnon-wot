@@ -80,6 +80,17 @@ class CompanionApp:
             self._on_battle_end(event)
             return
 
+        if etype == EventType.BATTLE_RESULT.value:
+            # Le resultat autoritaire arrive souvent APRES la fin de bataille :
+            # on met a jour le contexte, on re-enregistre (INSERT OR REPLACE) et
+            # on rafraichit la synthese garage avec les vraies valeurs.
+            self.engine.on_event(event)
+            ctx = self.engine.context
+            if ctx is not None:
+                self.store.record_from_context(ctx)
+                self._print_garage_summary(ctx.vehicle_id)
+            return
+
         self.engine.feed(event)
 
     def _on_battle_end(self, event: RawEvent) -> None:

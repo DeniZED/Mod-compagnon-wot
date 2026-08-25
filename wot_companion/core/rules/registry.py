@@ -6,6 +6,7 @@ from .endgame import EndgameRule
 from .hp_management import HpManagementRule
 from .initial_plan import InitialPlanRule
 from .retreat import RetreatRule
+from .rotation import NumericAwarenessRule
 from .tempo import TempoInitiativeRule
 
 
@@ -16,5 +17,6 @@ def default_rules() -> list[Rule]:
         RetreatRule(),
         HpManagementRule(),
         TempoInitiativeRule(),
+        NumericAwarenessRule(),
         EndgameRule(),
     ]

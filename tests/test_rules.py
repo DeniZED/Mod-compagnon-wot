@@ -7,6 +7,7 @@ from wot_companion.core.rules.base import RuleContext
 from wot_companion.core.rules.hp_management import HpManagementRule
 from wot_companion.core.rules.initial_plan import InitialPlanRule
 from wot_companion.core.rules.retreat import RetreatRule
+from wot_companion.core.rules.rotation import NumericAwarenessRule
 from wot_companion.core.rules.tempo import TempoInitiativeRule
 from wot_companion.knowledge.loader import KnowledgeBase
 
@@ -52,15 +53,26 @@ def test_hp_rule_fires_early_low_hp():
 def test_tempo_rule_requires_inactivity_and_balance():
     ctx = BattleContext(battle_id="b", start_ms=0)
     ctx.elapsed_s = 120
+    ctx.contribution_seen = True  # la source fournit degats/assist
     ctx.last_contribution_s = 0  # 120 s sans contribution
     ctx.allies_alive, ctx.enemies_alive = 14, 12  # avantage
     out = TempoInitiativeRule().evaluate(_rc(ctx))
     assert len(out) == 1 and out[0].action == "TAKE_INITIATIVE"
 
 
+def test_tempo_rule_silent_without_contribution_data():
+    # Faux positif evite : sans donnee de contribution, pas de conseil de tempo.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 120
+    ctx.last_contribution_s = 0
+    ctx.allies_alive, ctx.enemies_alive = 14, 12
+    assert TempoInitiativeRule().evaluate(_rc(ctx)) == []
+
+
 def test_tempo_rule_silent_when_outnumbered():
     ctx = BattleContext(battle_id="b", start_ms=0)
     ctx.elapsed_s = 120
+    ctx.contribution_seen = True
     ctx.last_contribution_s = 0
     ctx.allies_alive, ctx.enemies_alive = 8, 12  # inferiorite -> pas d'initiative
     assert TempoInitiativeRule().evaluate(_rc(ctx)) == []
@@ -74,3 +86,50 @@ def test_retreat_rule_fires_on_flank_collapse_with_hp():
     ctx.flank_ally_losses = {"town": 2}
     out = RetreatRule().evaluate(_rc(ctx))
     assert len(out) == 1 and out[0].action == "PREPARE_RETREAT"
+
+
+def test_rotation_rule_silent_without_team_count():
+    # Fallback sûr : sans equilibre numerique connu, pas de conseil.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300  # milieu de partie
+    assert NumericAwarenessRule().evaluate(_rc(ctx)) == []
+
+
+def test_rotation_rule_fires_mid_game_advantage():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300  # phase MID
+    ctx.allies_alive, ctx.enemies_alive = 10, 7  # ecart de 3, > 6 chars au total
+    out = NumericAwarenessRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "EXPLOIT_ADVANTAGE"
+
+
+def test_rotation_rule_fires_mid_game_disadvantage():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.allies_alive, ctx.enemies_alive = 7, 10
+    out = NumericAwarenessRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "REGROUP_STRONG_SIDE"
+
+
+def test_rotation_rule_silent_on_small_gap():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.allies_alive, ctx.enemies_alive = 10, 9  # ecart de 1 : bruit normal
+    assert NumericAwarenessRule().evaluate(_rc(ctx)) == []
+
+
+def test_rotation_rule_silent_in_early_phase():
+    # Early est couvert par le plan initial : pas de doublon.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 30
+    ctx.allies_alive, ctx.enemies_alive = 15, 12
+    assert NumericAwarenessRule().evaluate(_rc(ctx)) == []
+
+
+def test_rotation_rule_no_push_when_low_hp():
+    # Avantage numerique mais HP bas -> on ne pousse pas a l'attaque.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.allies_alive, ctx.enemies_alive = 10, 7
+    ctx.hp_ratio = 0.3
+    assert NumericAwarenessRule().evaluate(_rc(ctx)) == []

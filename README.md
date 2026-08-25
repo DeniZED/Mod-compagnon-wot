@@ -125,10 +125,42 @@ de fini du POC, Annexe C) :
 > version de WoT et s'ajustent à partir des logs `python.log` — sans jamais
 > pouvoir faire planter le jeu (tout est en `try/except`).
 
+### Overlay graphique in-game (mascotte cartoon)
+
+Au lieu de la console, le compagnon peut afficher une **mascotte-char cartoon**
+avec bulle de conseil, en fenêtre transparente, sans bordure, toujours au-dessus
+et **click-through**, ancrée en bas à droite (section 4.1). La mascotte a **12
+visages** (matrice `condition` × `expression`) : la **condition** suit les HP du
+joueur (neuf → abîmé), l'**expression** suit le conseil (confiant, idée, alerte,
+déterminé, inquiet…). Tkinter (inclus avec Python sous Windows), aucune
+dépendance supplémentaire :
+
+```bash
+python -m wot_companion.tools.live --overlay tk
+```
+
+Réglages via la config : ancrage, échelle du texte, masquage du personnage
+(notifications seules), mode streamer. Assets dans `wot_companion/ui/assets/`.
+
 ### Mode silence en direct (BAT-008)
 
 ```bash
 python -m wot_companion.tools.inject --silence   # bascule ON/OFF
+```
+
+### Progression : rapport de session & config (E8, GAR-002/003, §18)
+
+Les préférences (personnalité, intensité, objectif) sont **persistées** dans
+`wot_companion_config.json` : le compagnon les retient d'une session à l'autre.
+
+L'historique local (SQLite) se consulte via un **rapport de session** — synthèse
+multi-batailles par véhicule et par rôle, profil de coaching, axe prioritaire :
+
+```bash
+python -m wot_companion.tools.report --db wot_companion.sqlite
+python -m wot_companion.tools.report --db ... --vehicle leopard_1   # filtrer
+python -m wot_companion.tools.report --db ... --export diag.json    # diagnostic non sensible
+python -m wot_companion.tools.report --db ... --reset               # supprimer mes données (§8.2)
 ```
 
 ---
