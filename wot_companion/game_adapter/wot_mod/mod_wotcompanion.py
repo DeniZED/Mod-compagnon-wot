@@ -353,6 +353,9 @@ class CompanionBridge(object):
         self._eff_ctrl = None          # personalEfficiencyCtrl (degats/assist live)
         self._results_hooked = False   # hook onBattleResultsReceived pose une fois
         self._ended_battle_id = None   # id conserve pour rattacher les resultats tardifs
+        self._max_hp = None            # HP max memorise (pour signaler la mort)
+        self._dead_sent = False        # HP=0 deja envoye pour cette bataille
+        self._player_vid = None        # id du vehicule du joueur dans l'arene
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -374,6 +377,9 @@ class CompanionBridge(object):
         self.battle_id = "wot-%d" % int(time.time())
         self.my_team = _first(lambda: p.team)
         self._start_time = time.time()
+        self._dead_sent = False
+        self._max_hp = None
+        self._player_vid = _first(lambda: p.playerVehicleID)
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
 
@@ -411,14 +417,13 @@ class CompanionBridge(object):
             if self._eff_ctrl is not None and DISCOVERY:
                 getters = [a for a in dir(self._eff_ctrl) if a.startswith("get")]
                 _discovery_log("STATS: personalEfficiencyCtrl getters = " + repr(getters)[:400])
-                for name in ("getTotalEfficiency", "getDamage", "getDamageDealt"):
-                    if hasattr(self._eff_ctrl, name):
-                        try:
-                            val = getattr(self._eff_ctrl, name)()
-                            _discovery_log("STATS: %s() = %r (attrs=%s)" %
-                                           (name, val, [a for a in dir(val) if a.startswith("get")][:20]))
-                        except Exception as exc:
-                            _discovery_log("STATS: %s() erreur: %s" % (name, exc))
+                pv = _first(lambda: _player().playerVehicleID)
+                try:
+                    eff = self._eff_ctrl.getTotalEfficiency(pv)
+                    _discovery_log("STATS: getTotalEfficiency(vid) = %r ; getters=%s" %
+                                   (eff, [a for a in dir(eff) if not a.startswith("__")][:40]))
+                except Exception as exc:
+                    _discovery_log("STATS: getTotalEfficiency(vid) erreur: %s" % exc)
         except Exception:
             _discovery_log("STATS efficiency probe:\n" + traceback.format_exc())
 
@@ -532,6 +537,8 @@ class CompanionBridge(object):
         self.sender.send("CLOCK_TICK", {"elapsed_s": round(elapsed, 1)}, self.battle_id)
 
         hp, max_hp = _get_health(p)
+        if max_hp:
+            self._max_hp = max_hp
         if hp is not None and max_hp:
             self.sender.send("PLAYER_HP_CHANGED",
                              {"hp": max(0, hp), "max_hp": max_hp}, self.battle_id)
@@ -539,8 +546,11 @@ class CompanionBridge(object):
         arena = _get_arena(p)
         allies = enemies = 0
         counted = False
+        own_alive = None
         for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
             counted = True
+            if vid == self._player_vid:
+                own_alive = is_alive
             if not is_alive:
                 continue
             if team == self.my_team:
@@ -551,6 +561,13 @@ class CompanionBridge(object):
             self.sender.send("TEAM_COUNT",
                              {"allies_alive": allies, "enemies_alive": enemies},
                              self.battle_id)
+
+        # Mort du joueur (drapeau isAlive de son propre vehicule) : signale HP=0
+        # une seule fois, pour que la survie du garage soit correcte des la fin.
+        if own_alive is False and not self._dead_sent and self._max_hp:
+            self._dead_sent = True
+            self.sender.send("PLAYER_HP_CHANGED",
+                             {"hp": 0, "max_hp": self._max_hp}, self.battle_id)
 
         # Degats propres en direct (affiches a l'ecran par le jeu = Fair Play).
         dmg, assist = self._read_live_efficiency()
@@ -566,17 +583,23 @@ class CompanionBridge(object):
         ec = self._eff_ctrl
         if ec is None:
             return None, None
-        eff = _first(lambda: ec.getTotalEfficiency())
+        pv = self._player_vid
+        # getTotalEfficiency exige un argument (l'id du vehicule sur ce client).
+        eff = _first(
+            lambda: ec.getTotalEfficiency(pv),
+            lambda: ec.getTotalEfficiency(),
+        )
+        if eff is None:
+            return None, None
         dmg = _first(
             lambda: eff.getDamage(),
+            lambda: eff.damage,
             lambda: eff.getDamageDealt(),
-            lambda: ec.getDamage(),
-            lambda: ec.getDamageDealt(),
         )
         assist = _first(
             lambda: eff.getAssist(),
-            lambda: eff.getDamageAssisted(),
-            lambda: ec.getAssist(),
+            lambda: eff.assist,
+            lambda: (eff.getRadioAssist() or 0) + (eff.getTrackAssist() or 0),
         )
         return dmg, assist
 
