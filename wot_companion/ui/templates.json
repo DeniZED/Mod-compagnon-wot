@@ -68,6 +68,36 @@
       "detendu": "Egalite ({allies_alive}v{enemies_alive}), joue malin : vision et cap.",
       "silencieux": "Vision, cap."
     },
+    "reaction_hit": {
+      "coach": "Tu encaisses : angle ton blindage et ne reste pas immobile a decouvert.",
+      "commandant": "Touche. Angle, bouge.",
+      "detendu": "Aïe, ca tape : pense a angler un peu.",
+      "silencieux": "Angle."
+    },
+    "reaction_hit2": {
+      "coach": "Encore touche : bouge d'un poil et presente ton blindage le plus epais.",
+      "commandant": "Touche. Repositionne.",
+      "detendu": "Ça continue de taper : bouge un peu.",
+      "silencieux": "Bouge."
+    },
+    "reaction_hit3": {
+      "coach": "Tu prends des coups : profite de ton blindage mais ne te laisse pas focus sur place.",
+      "commandant": "Focus sur toi. Ne stagne pas.",
+      "detendu": "On te vise : evite de rester plante la.",
+      "silencieux": "Ne stagne pas."
+    },
+    "reaction_hit_heavy": {
+      "coach": "Gros coup encaisse ({hp_pct}%). Casse la ligne de vue ou angle fort avant le prochain tir.",
+      "commandant": "Gros tir ({hp_pct}%). Couvre-toi.",
+      "detendu": "Ouch, ca pique ({hp_pct}%) : mets-toi a couvert.",
+      "silencieux": "Couvre-toi."
+    },
+    "reaction_hit_low": {
+      "coach": "HP bas ({hp_pct}%) et tu prends encore des coups : decroche vers une position sûre.",
+      "commandant": "HP {hp_pct}%. Decroche !",
+      "detendu": "La ca chauffe ({hp_pct}%), replie-toi vite.",
+      "silencieux": "Decroche."
+    },
     "positive_healthy": {
       "coach": "Beau jeu : tu es encore a {hp_pct}% de HP a ce stade. Continue de choisir tes echanges, ca paie.",
       "commandant": "HP sains ({hp_pct}%). Bien joue, continue.",

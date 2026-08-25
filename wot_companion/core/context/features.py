@@ -18,6 +18,8 @@ PHASE_HYSTERESIS_S = 10.0
 # Fenetre pendant laquelle un effondrement de flanc reste "actif" apres la
 # derniere perte : au-dela, l'alerte de repli n'est plus pertinente (anti-spam).
 RECENT_LOSS_WINDOW_S = 60.0
+# Fenetre pendant laquelle des degats subis restent "frais" pour une reaction.
+RECENT_DAMAGE_WINDOW_S = 4.0
 
 
 @dataclass
@@ -30,6 +32,8 @@ class Features:
     outnumbered_locally: bool | None       # inferiorite locale observable
     endgame_few_left: bool                 # peu de chars restants au total
     contribution_total: float
+    took_damage_recently: bool             # a subi des degats dans la fenetre recente
+    damage_taken_ratio: float              # ampleur de la derniere chute (0..1)
 
 
 class FeatureBuilder:
@@ -87,6 +91,11 @@ class FeatureBuilder:
         if ctx.allies_alive is not None and ctx.enemies_alive is not None:
             total_alive = ctx.allies_alive + ctx.enemies_alive
 
+        took_damage = (
+            ctx.last_damage_taken_s is not None
+            and ctx.elapsed_s - ctx.last_damage_taken_s <= RECENT_DAMAGE_WINDOW_S
+        )
+
         return Features(
             phase=phase,
             hp_ratio=ctx.hp_ratio,
@@ -96,4 +105,6 @@ class FeatureBuilder:
             outnumbered_locally=outnumbered,
             endgame_few_left=(total_alive is not None and total_alive <= 6),
             contribution_total=ctx.total_damage + ctx.total_assist,
+            took_damage_recently=took_damage,
+            damage_taken_ratio=ctx.last_damage_taken_ratio if took_damage else 0.0,
         )

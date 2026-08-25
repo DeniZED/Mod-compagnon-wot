@@ -65,6 +65,9 @@ class BattleContext:
     last_contribution_s: float = 0.0       # dernier instant ou degats/assist ont bouge
     last_ally_loss_s: float | None = None
     flank_ally_losses: dict[str, int] = field(default_factory=dict)
+    # Degats subis (chute de HP) : pour les reactions "tir recu".
+    last_damage_taken_s: float | None = None
+    last_damage_taken_ratio: float = 0.0   # ampleur de la derniere chute (0..1)
 
     # Resultat
     result: str | None = None
@@ -102,10 +105,18 @@ class BattleContext:
             self.allies_alive = self.composition.ally_count
             self.enemies_alive = self.composition.enemy_count
         elif et == EventType.PLAYER_HP_CHANGED.value:
+            new_ratio = None
             if "hp_ratio" in p:
-                self.hp_ratio = float(p["hp_ratio"])
+                new_ratio = float(p["hp_ratio"])
             elif "hp" in p and "max_hp" in p and p["max_hp"]:
-                self.hp_ratio = float(p["hp"]) / float(p["max_hp"])
+                new_ratio = float(p["hp"]) / float(p["max_hp"])
+            if new_ratio is not None:
+                # Chute de HP = degats subis (tir recu) : on horodate pour les
+                # reactions. On ignore une remontee (kit de reparation).
+                if self.hp_ratio is not None and new_ratio < self.hp_ratio - 1e-6:
+                    self.last_damage_taken_s = self.elapsed_s
+                    self.last_damage_taken_ratio = self.hp_ratio - new_ratio
+                self.hp_ratio = new_ratio
         elif et == EventType.PLAYER_DAMAGE_DEALT.value:
             self.contribution_seen = True
             new_total = p.get("total_damage")

@@ -68,6 +68,12 @@ class AdviceArbiter:
     def _passes_cooldown(self, cand: CandidateAdvice, now_s: float, is_critical: bool) -> bool:
         a = self.settings.anti_spam
         st = self.state
+        # Reaction rapide (tir recu...) : intervalle PROPRE a la regle, qui
+        # court-circuite les cooldowns categorie/global pour rester reactif sans
+        # bloquer les autres familles de conseils.
+        if cand.min_interval_s > 0:
+            last_rule = st.last_rule_s.get(cand.rule_id)
+            return last_rule is None or now_s - last_rule >= cand.min_interval_s
         # Le cooldown de categorie s'applique TOUJOURS, y compris au critique :
         # il empeche de repeter le meme conseil tant que sa condition persiste
         # (REC-03). Un critique ne contourne que le cooldown GLOBAL et le
@@ -113,7 +119,11 @@ class AdviceArbiter:
             if s.personality.value == "silencieux" and not is_critical:
                 continue
 
-            repetition = self._repetition_factor(cand, now_s)
+            # Les reactions gerent leur propre cadence (min_interval_s) : on ne
+            # leur applique pas la penalite de repetition, sinon elles ne
+            # pourraient jamais se repeter sous le feu.
+            repetition = 0.0 if cand.min_interval_s > 0 \
+                else self._repetition_factor(cand, now_s)
             intrusion = _PHASE_INTRUSION.get(features.phase, 0.3)
             breakdown = self.scorer.score(
                 cand, repetition=repetition, intrusion=intrusion,

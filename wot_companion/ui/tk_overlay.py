@@ -40,7 +40,6 @@ class TkOverlay(OverlaySink):
         self._root = None
         self._canvas = None
         self._images: dict[tuple[str, str], Any] = {}
-        self._hide_after_id = None
         self._last_condition = "neuf"
         self._current: dict | None = None
         self._closing = False
@@ -285,12 +284,9 @@ class TkOverlay(OverlaySink):
             self._last_condition = condition_for_hp(msg["hp_ratio"])
         self._current = msg
         self._redraw()
-        if self._hide_after_id is not None:
-            try:
-                self._root.after_cancel(self._hide_after_id)
-            except Exception:
-                pass
-        self._hide_after_id = self._root.after(int(msg["ttl"] * 1000), self._draw_idle)
+        # Le dernier conseil RESTE affiche jusqu'au suivant (pas de "carre vide") :
+        # on n'efface plus automatiquement au bout du TTL. Le message ne disparait
+        # qu'au changement de bataille (clear()).
 
     def _draw_idle(self, startup: bool = False) -> None:
         self._current = None

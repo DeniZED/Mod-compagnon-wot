@@ -28,6 +28,7 @@ class AdviceCategory(str, Enum):
     ROTATION = "ROTATION"
     ENDGAME = "ENDGAME"
     POSITIVE = "POSITIVE"
+    REACTION = "REACTION"      # reactions breves aux evenements (tir recu...)
     GARAGE = "GARAGE"
 
 
