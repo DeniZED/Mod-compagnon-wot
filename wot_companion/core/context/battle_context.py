@@ -68,6 +68,8 @@ class BattleContext:
 
     # Resultat
     result: str | None = None
+    result_survived: bool | None = None    # survie reelle (resultat autoritaire)
+    kills: int = 0
     finished: bool = False
 
     # Champs signales absents (pour fallback sûr / audit)
@@ -146,8 +148,13 @@ class BattleContext:
             self.result = p.get("result")
             if "damage" in p:
                 self.total_damage = float(p["damage"])
+                self.contribution_seen = True
             if "assist" in p:
                 self.total_assist = float(p["assist"])
+            if "survived" in p:
+                self.result_survived = bool(p["survived"])
+            if "kills" in p:
+                self.kills = int(p["kills"])
             if "hp_ratio_end" in p:
                 self.hp_ratio = float(p["hp_ratio_end"])
         elif et == EventType.BATTLE_END.value:

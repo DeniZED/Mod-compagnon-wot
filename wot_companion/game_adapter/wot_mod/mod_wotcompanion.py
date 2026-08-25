@@ -350,11 +350,9 @@ class CompanionBridge(object):
         self.my_team = None
         self._polling = False
         self._start_time = None
-        # Sondes de decouverte pour degats/assist (feedback) et resultats.
-        self._fb_count = 0
-        self._fb_feedback = None
-        self._fb_handler = None
-        self._results_hooked = False
+        self._eff_ctrl = None          # personalEfficiencyCtrl (degats/assist live)
+        self._results_hooked = False   # hook onBattleResultsReceived pose une fois
+        self._ended_battle_id = None   # id conserve pour rattacher les resultats tardifs
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -402,72 +400,84 @@ class CompanionBridge(object):
         self._hook_stats_discovery()
         self._start_polling()
 
-    # ---- Sondes degats/assist/resultats (decouverte) -----------------------
+    # ---- Statistiques : resultat de bataille (cable) + sonde efficacite live -
     def _hook_stats_discovery(self):
+        # Sonde de l'efficacite personnelle (degats/assist en direct) : on
+        # journalise ses accesseurs pour cabler le live au prochain tour.
         try:
             sp = _resolve_session_provider()
-            if sp is None:
-                _discovery_log("STATS: session provider introuvable")
-            else:
-                _discovery_log("STATS: session provider = " + type(sp).__name__)
-                shared = getattr(sp, "shared", None)
-                if shared is not None:
-                    _discovery_log("STATS: sp.shared attrs = " +
-                                   ", ".join(sorted(dir(shared)))[:600])
-                feedback = getattr(shared, "feedback", None) if shared else None
-                if feedback is not None and hasattr(feedback, "onPlayerFeedbackReceived"):
-                    self._fb_feedback = feedback
-                    self._fb_handler = self._on_feedback_probe
-                    feedback.onPlayerFeedbackReceived += self._fb_handler
-                    _discovery_log("STATS: hook feedback.onPlayerFeedbackReceived OK")
-                else:
-                    _discovery_log("STATS: feedback/onPlayerFeedbackReceived absent")
+            shared = getattr(sp, "shared", None) if sp else None
+            self._eff_ctrl = getattr(shared, "personalEfficiencyCtrl", None) if shared else None
+            if self._eff_ctrl is not None and DISCOVERY:
+                getters = [a for a in dir(self._eff_ctrl) if a.startswith("get")]
+                _discovery_log("STATS: personalEfficiencyCtrl getters = " + repr(getters)[:400])
+                for name in ("getTotalEfficiency", "getDamage", "getDamageDealt"):
+                    if hasattr(self._eff_ctrl, name):
+                        try:
+                            val = getattr(self._eff_ctrl, name)()
+                            _discovery_log("STATS: %s() = %r (attrs=%s)" %
+                                           (name, val, [a for a in dir(val) if a.startswith("get")][:20]))
+                        except Exception as exc:
+                            _discovery_log("STATS: %s() erreur: %s" % (name, exc))
         except Exception:
-            _discovery_log("STATS hook feedback:\n" + traceback.format_exc())
+            _discovery_log("STATS efficiency probe:\n" + traceback.format_exc())
 
-        # Resultats de bataille : on tente de reperer l'evenement.
+        # Resultat de bataille (cable) : source autoritaire pour le garage.
         try:
             from PlayerEvents import g_playerEvents
-            names = [n for n in dir(g_playerEvents) if "attle" in n or "esult" in n]
-            _discovery_log("STATS: g_playerEvents evenements resultats candidats = " + repr(names))
             if hasattr(g_playerEvents, "onBattleResultsReceived") and not self._results_hooked:
-                g_playerEvents.onBattleResultsReceived += self._on_results_probe
+                g_playerEvents.onBattleResultsReceived += self._on_results
                 self._results_hooked = True
                 _discovery_log("STATS: hook onBattleResultsReceived OK")
         except Exception:
             _discovery_log("STATS hook resultats:\n" + traceback.format_exc())
 
-    def _on_feedback_probe(self, event):
-        """Log-only : decrit les 15 premiers evenements de feedback du joueur."""
-        try:
-            if self._fb_count >= 15:
-                return
-            self._fb_count += 1
-            etype = event.getType() if hasattr(event, "getType") else "?"
-            extra = event.getExtra() if hasattr(event, "getExtra") else None
-            extra_name = type(extra).__name__ if extra is not None else "None"
-            extra_attrs = ", ".join(a for a in dir(extra) if a.startswith("get")) if extra else ""
-            dmg = None
-            if extra is not None and hasattr(extra, "getDamage"):
-                try:
-                    dmg = extra.getDamage()
-                except Exception:
-                    dmg = "err"
-            _discovery_log("FEEDBACK type=%r extra=%s getDamage=%r methods=[%s]" %
-                           (etype, extra_name, dmg, extra_attrs[:200]))
-        except Exception:
-            pass
-
-    def _on_results_probe(self, *args):
-        """Log-only : structure des resultats de bataille."""
+    def _on_results(self, *args):
+        """Resultats de bataille -> envoie degats/assist reels + resultat."""
         try:
             results = args[-1] if args else None
-            if hasattr(results, "keys"):
-                _discovery_log("RESULTS keys = " + repr(list(results.keys())[:50]))
+            if not hasattr(results, "get"):
+                return
+            personal = results.get("personal", {}) or {}
+            common = results.get("common", {}) or {}
+
+            dmg = assist = kills = 0
+            survived = None
+            for key, v in personal.items():
+                if not isinstance(v, dict) or "damageDealt" not in v:
+                    continue  # ignore la cle 'avatar' et autres non-vehicules
+                dmg += v.get("damageDealt", 0) or 0
+                assist += (v.get("damageAssistedRadio", 0) or 0) \
+                    + (v.get("damageAssistedTrack", 0) or 0) \
+                    + (v.get("damageAssistedStun", 0) or 0)
+                kills += v.get("kills", 0) or 0
+                dr = v.get("deathReason", -1)
+                surv = (dr == -1)
+                survived = surv if survived is None else (survived and surv)
+
+            winner = common.get("winnerTeam", 0)
+            if winner == 0:
+                result = "draw"
+            elif winner == self.my_team:
+                result = "victory"
             else:
-                _discovery_log("RESULTS type = " + type(results).__name__ + " args=" + str(len(args)))
+                result = "defeat"
+
+            bid = self._ended_battle_id or self.battle_id
+            if bid is None:
+                return
+            if dmg:
+                self.sender.send("PLAYER_DAMAGE_DEALT", {"total_damage": dmg}, bid)
+            if assist:
+                self.sender.send("PLAYER_ASSIST", {"total_assist": assist}, bid)
+            self.sender.send("BATTLE_RESULT", {
+                "result": result, "damage": dmg, "assist": assist,
+                "survived": 1 if survived else 0, "kills": kills,
+            }, bid)
+            _discovery_log("RESULT envoye: %s dmg=%d assist=%d kills=%d survived=%r" %
+                           (result, dmg, assist, kills, survived))
         except Exception:
-            _discovery_log("RESULTS probe:\n" + traceback.format_exc())
+            _discovery_log("RESULT parse:\n" + traceback.format_exc())
 
     def _send_composition(self, arena):
         ally, enemy = {}, {}
@@ -488,16 +498,10 @@ class CompanionBridge(object):
 
     def _on_battle_end(self):
         self._polling = False
-        # Retire le hook de feedback pour eviter les doublons entre batailles.
-        if self._fb_feedback is not None and self._fb_handler is not None:
-            try:
-                self._fb_feedback.onPlayerFeedbackReceived -= self._fb_handler
-            except Exception:
-                pass
-        self._fb_feedback = None
-        self._fb_handler = None
-        self._fb_count = 0
+        # On conserve l'id : les resultats de bataille arrivent souvent APRES la
+        # sortie de l'arene, et doivent pouvoir s'y rattacher (garage a jour).
         if self.battle_id is not None:
+            self._ended_battle_id = self.battle_id
             self.sender.send("BATTLE_END", {"battle_id": self.battle_id}, self.battle_id)
         self.battle_id = None
 
