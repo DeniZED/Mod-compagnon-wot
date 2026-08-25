@@ -40,6 +40,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--overlay", choices=["console", "tk", "none"], default="console",
                         help="Affichage des conseils : console (defaut), tk (overlay "
                              "graphique in-game), none.")
+    parser.add_argument("--overlay-anchor",
+                        choices=["top_right", "top_left", "bottom_left", "bottom_right"],
+                        default=None, help="Coin d'ancrage de l'overlay (evite la minimap).")
+    parser.add_argument("--overlay-x", type=int, default=None,
+                        help="Decalage horizontal de l'overlay en pixels (+ vers la droite).")
+    parser.add_argument("--overlay-y", type=int, default=None,
+                        help="Decalage vertical de l'overlay en pixels (+ vers le bas).")
+    parser.add_argument("--no-click-through", action="store_true",
+                        help="Rend l'overlay cliquable (desactive le click-through).")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -60,6 +69,14 @@ def main(argv: list[str] | None = None) -> int:
         settings.intensity = args.intensity
     if args.objective is not None:
         settings.session_objective = args.objective or None
+    if args.overlay_anchor is not None:
+        settings.ui.anchor = args.overlay_anchor
+    if args.overlay_x is not None:
+        settings.ui.offset_x = args.overlay_x
+    if args.overlay_y is not None:
+        settings.ui.offset_y = args.overlay_y
+    if args.no_click_through:
+        settings.ui.click_through = False
     save_settings(settings, config_path)
 
     runner = LiveRunner(

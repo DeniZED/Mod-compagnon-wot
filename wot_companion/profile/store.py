@@ -40,7 +40,10 @@ class BattleRecord:
 class HistoryStore:
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self.db_path = str(db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        # check_same_thread=False : avec l'overlay graphique, le moteur tourne dans
+        # un thread separe de la boucle Tk. Les acces DB restent serialises (seul le
+        # thread moteur ecrit), donc c'est sûr.
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._migrate()
 

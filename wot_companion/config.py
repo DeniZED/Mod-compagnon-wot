@@ -30,10 +30,13 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
         "language": s.language,
         "ui": {
             "anchor": s.ui.anchor,
+            "offset_x": s.ui.offset_x,
+            "offset_y": s.ui.offset_y,
             "max_bubble_chars": s.ui.max_bubble_chars,
             "character_visible": s.ui.character_visible,
             "streamer_mode": s.ui.streamer_mode,
             "text_scale": s.ui.text_scale,
+            "click_through": s.ui.click_through,
         },
         "wargaming_api_enabled": s.wargaming_api_enabled,
         "llm_enabled": s.llm_enabled,
@@ -67,10 +70,13 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
     if isinstance(ui, dict):
         s.ui = UISettings(
             anchor=ui.get("anchor", s.ui.anchor),
+            offset_x=int(ui.get("offset_x", s.ui.offset_x)),
+            offset_y=int(ui.get("offset_y", s.ui.offset_y)),
             max_bubble_chars=int(ui.get("max_bubble_chars", s.ui.max_bubble_chars)),
             character_visible=bool(ui.get("character_visible", s.ui.character_visible)),
             streamer_mode=bool(ui.get("streamer_mode", s.ui.streamer_mode)),
             text_scale=float(ui.get("text_scale", s.ui.text_scale)),
+            click_through=bool(ui.get("click_through", s.ui.click_through)),
         )
 
     for flag in ("wargaming_api_enabled", "llm_enabled", "telemetry_enabled"):
