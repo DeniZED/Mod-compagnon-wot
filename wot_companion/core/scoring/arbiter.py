@@ -20,7 +20,10 @@ _SEVERITY_RANK = {
     Severity.CRITICAL: 3, Severity.ATTENTION: 2,
     Severity.INFO: 1, Severity.POSITIVE: 0,
 }
-_PHASE_INTRUSION = {BattlePhase.EARLY: 0.1, BattlePhase.MID: 0.35, BattlePhase.LATE: 0.5}
+# Caractere intrusif du moment (penalise le score). Abaisse en milieu/fin de
+# partie : c'est justement la que le joueur a besoin de reperes, et l'ancienne
+# valeur etouffait tous les conseils sauf le plan initial.
+_PHASE_INTRUSION = {BattlePhase.EARLY: 0.1, BattlePhase.MID: 0.22, BattlePhase.LATE: 0.35}
 
 
 @dataclass

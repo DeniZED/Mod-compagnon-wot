@@ -48,8 +48,8 @@ class PositiveReinforcementRule(Rule):
             severity=Severity.POSITIVE,
             ttl_seconds=5.0,
             cooldown_key="positive",
-            urgency=0.2,
-            impact=0.4,
+            urgency=0.35,
+            impact=0.55,
             confidence=1.0,   # HP propre = signal fiable
             context={"hp_pct": round(f.hp_ratio * 100)},
         )]
