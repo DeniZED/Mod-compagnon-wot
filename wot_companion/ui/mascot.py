@@ -28,8 +28,11 @@ _FALLBACK = {
     ("neuf", "worried"): ("neuf", "alert"),
 }
 
-# Seuil HP en dessous duquel la mascotte passe en condition "abime".
-DAMAGED_HP_RATIO = 0.5
+# Seuil HP en dessous duquel la mascotte passe en condition "abime". A 60%, un
+# char a deja encaisse un tir serieux : il "parait" abime bien avant d'etre
+# critique, ce qui rend la mascotte plus reactive (retour de test : a 50% HP la
+# mascotte restait "neuf").
+DAMAGED_HP_RATIO = 0.6
 
 # Couleur d'accent de la bulle selon la severite (code couleur limite, 4.1).
 _ACCENT_BY_SEVERITY = {

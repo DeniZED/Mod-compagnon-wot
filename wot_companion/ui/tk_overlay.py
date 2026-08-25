@@ -68,6 +68,10 @@ class TkOverlay(OverlaySink):
     def clear(self) -> None:
         self._queue.put({"clear": True})
 
+    def notify_state(self, hp_ratio: float | None = None) -> None:
+        if hp_ratio is not None:
+            self._queue.put({"state_hp_ratio": hp_ratio})
+
     def stop(self) -> None:
         self._closing = True
         if self._root is not None:
@@ -260,12 +264,21 @@ class TkOverlay(OverlaySink):
                 msg = self._queue.get_nowait()
                 if msg.get("clear"):
                     self._draw_idle()
+                elif "state_hp_ratio" in msg:
+                    self._update_condition(msg["state_hp_ratio"])
                 else:
                     self._render_advice(msg)
         except queue.Empty:
             pass
         if self._root is not None:
             self._root.after(50, self._poll_queue)
+
+    def _update_condition(self, hp_ratio: float) -> None:
+        """Suit l'etat du char (neuf/abime) en direct et redessine si change."""
+        cond = condition_for_hp(hp_ratio)
+        if cond != self._last_condition:
+            self._last_condition = cond
+            self._redraw()
 
     def _render_advice(self, msg: dict) -> None:
         if msg.get("hp_ratio") is not None:

@@ -36,6 +36,11 @@ class OverlaySink(ABC):
     @abstractmethod
     def clear(self) -> None: ...
 
+    def notify_state(self, hp_ratio: float | None = None) -> None:
+        """Etat de jeu continu (HP...) independant des conseils : permet a la
+        mascotte de suivre l'etat du char en direct. No-op par defaut."""
+        return None
+
 
 class NullOverlay(OverlaySink):
     """Ne fait rien : personnage totalement masque, sans notification."""
