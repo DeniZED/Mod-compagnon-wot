@@ -31,7 +31,7 @@ include = ["wot_companion*"]
 
 [tool.setuptools.package-data]
 wot_companion = [
-    "knowledge/**/*.json", "ui/*.json", "profile/*.sql",
+    "knowledge/**/*.json", "ui/*.json", "ui/assets/*.png", "profile/*.sql",
     "game_adapter/wot_mod/*.py", "game_adapter/wot_mod/*.xml",
     "game_adapter/wot_mod/*.md",
 ]

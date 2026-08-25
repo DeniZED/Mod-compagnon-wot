@@ -1,7 +1,7 @@
 """LiveRunner : fait tourner le compagnon en conditions reelles.
 
 Ecoute le pont IPC (mod WoT ou injecteur), fait tourner le moteur deterministe,
-affiche les conseils en direct (console) et enregistre l'historique persistant.
+affiche les conseils (console OU overlay graphique) et enregistre l'historique.
 
 Robustesse (REC-04/05/07) : une source qui se deconnecte ou plante n'arrete pas
 le compagnon ; le moteur continue et attend la prochaine connexion.
@@ -9,6 +9,7 @@ le compagnon ; le moteur continue et attend la prochaine connexion.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 from ..app import CompanionApp
@@ -16,9 +17,21 @@ from ..game_adapter.base import EventEnvelope
 from ..game_adapter.ipc import DEFAULT_HOST, DEFAULT_PORT, SocketEventServerAdapter
 from ..profile.store import HistoryStore
 from ..settings import Settings
-from ..ui.overlay import ConsoleOverlay
+from ..ui.overlay import ConsoleOverlay, NullOverlay
 
 logger = logging.getLogger("wot_companion.live")
+
+
+def _build_overlay(kind: str, settings: Settings, use_color: bool):
+    if kind == "none":
+        return NullOverlay()
+    if kind == "tk":
+        from ..ui.tk_overlay import TkOverlay, is_available
+        if not is_available():
+            print("[Overlay] Tkinter indisponible : bascule sur la console.")
+            return ConsoleOverlay(use_color=use_color)
+        return TkOverlay(settings)
+    return ConsoleOverlay(use_color=use_color)
 
 
 class LiveRunner:
@@ -29,11 +42,12 @@ class LiveRunner:
         port: int = DEFAULT_PORT,
         db_path: str | Path = "wot_companion.sqlite",
         use_color: bool = True,
+        overlay: str = "console",
     ) -> None:
         self.settings = settings or Settings()
         self.host = host
         self.port = port
-        self.overlay = ConsoleOverlay(use_color=use_color)
+        self.overlay = _build_overlay(overlay, self.settings, use_color)
         self.store = HistoryStore(db_path)
         self.app = CompanionApp(settings=self.settings, store=self.store, overlay=self.overlay)
         self.adapter = SocketEventServerAdapter(
@@ -45,14 +59,9 @@ class LiveRunner:
         etype = env.event_type
         if etype == "CTRL_SILENCE_TOGGLE":
             silenced = self.app.toggle_silence()
-            self._banner("SILENCE ON" if silenced else "SILENCE OFF")
+            print(f"\n=== {'SILENCE ON' if silenced else 'SILENCE OFF'} ===\n")
         elif etype == "CTRL_PING":
             logger.info("Ping recu de la source (%s)", env.payload)
-        else:
-            logger.info("Message de controle non gere: %s", etype)
-
-    def _banner(self, msg: str) -> None:
-        print(f"\n=== {msg} ===\n")
 
     # ---- Boucle principale -------------------------------------------------
     def run(self) -> None:
@@ -61,11 +70,35 @@ class LiveRunner:
         print(f"Historique : {self.store.db_path}")
         print("En attente de la source d'evenements (mod WoT ou injecteur)...")
         print("Ctrl+C pour arreter.\n")
+
+        if getattr(self.overlay, "needs_main_thread", False):
+            self._run_with_gui_overlay()
+        else:
+            self._run_console()
+
+    def _run_console(self) -> None:
         try:
-            self.app.run(self.adapter)  # bloque : consomme le flux socket
+            self.app.run(self.adapter)
         except KeyboardInterrupt:
             print("\nArret demande.")
         finally:
+            self.adapter.stop()
+            self.store.close()
+
+    def _run_with_gui_overlay(self) -> None:
+        """Overlay graphique : le moteur consomme le socket dans un thread, la
+        boucle Tk tourne sur le thread principal (Tk l'exige)."""
+        worker = threading.Thread(target=self.app.run, args=(self.adapter,), daemon=True)
+        worker.start()
+        try:
+            self.overlay.run_mainloop()
+        except KeyboardInterrupt:
+            print("\nArret demande.")
+        finally:
+            try:
+                self.overlay.stop()
+            except Exception:
+                pass
             self.adapter.stop()
             self.store.close()
 

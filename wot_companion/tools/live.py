@@ -37,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="Chemin du fichier historique SQLite persistant.")
     parser.add_argument("--config", default=None,
                         help="Chemin du fichier de config (defaut: a cote de la DB).")
+    parser.add_argument("--overlay", choices=["console", "tk", "none"], default="console",
+                        help="Affichage des conseils : console (defaut), tk (overlay "
+                             "graphique in-game), none.")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -61,10 +64,11 @@ def main(argv: list[str] | None = None) -> int:
 
     runner = LiveRunner(
         settings=settings, host=args.host, port=args.port,
-        db_path=args.db, use_color=not args.no_color,
+        db_path=args.db, use_color=not args.no_color, overlay=args.overlay,
     )
     print(f"Config : {config_path}  (personnalite={settings.personality.value}, "
-          f"intensite={settings.intensity}, objectif={settings.session_objective})")
+          f"intensite={settings.intensity}, objectif={settings.session_objective}, "
+          f"overlay={args.overlay})")
     runner.run()
     return 0
 

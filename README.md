@@ -125,6 +125,21 @@ de fini du POC, Annexe C) :
 > version de WoT et s'ajustent à partir des logs `python.log` — sans jamais
 > pouvoir faire planter le jeu (tout est en `try/except`).
 
+### Overlay graphique in-game (mascotte cartoon)
+
+Au lieu de la console, le compagnon peut afficher une **mascotte-char cartoon**
+avec bulle de conseil, en fenêtre transparente, sans bordure, toujours au-dessus
+et **click-through**, ancrée en bas à droite (section 4.1). L'expression change
+selon la gravité (normal / attention / critique / positif). Tkinter (inclus avec
+Python sous Windows), aucune dépendance supplémentaire :
+
+```bash
+python -m wot_companion.tools.live --overlay tk
+```
+
+Réglages via la config : ancrage, échelle du texte, masquage du personnage
+(notifications seules), mode streamer. Assets dans `wot_companion/ui/assets/`.
+
 ### Mode silence en direct (BAT-008)
 
 ```bash
