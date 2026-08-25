@@ -22,7 +22,8 @@ from ..ui.overlay import ConsoleOverlay, NullOverlay
 logger = logging.getLogger("wot_companion.live")
 
 
-def _build_overlay(kind: str, settings: Settings, use_color: bool):
+def _build_overlay(kind: str, settings: Settings, use_color: bool,
+                   debug_opaque: bool = False):
     if kind == "none":
         return NullOverlay()
     if kind == "tk":
@@ -30,7 +31,7 @@ def _build_overlay(kind: str, settings: Settings, use_color: bool):
         if not is_available():
             print("[Overlay] Tkinter indisponible : bascule sur la console.")
             return ConsoleOverlay(use_color=use_color)
-        return TkOverlay(settings)
+        return TkOverlay(settings, debug_opaque=debug_opaque)
     return ConsoleOverlay(use_color=use_color)
 
 
@@ -44,12 +45,13 @@ class LiveRunner:
         use_color: bool = True,
         overlay: str = "console",
         config_path: str | Path | None = None,
+        overlay_debug: bool = False,
     ) -> None:
         self.settings = settings or Settings()
         self.host = host
         self.port = port
         self.config_path = config_path
-        self.overlay = _build_overlay(overlay, self.settings, use_color)
+        self.overlay = _build_overlay(overlay, self.settings, use_color, overlay_debug)
         self._wire_overlay_persistence()
         self.store = HistoryStore(db_path)
         self.app = CompanionApp(settings=self.settings, store=self.store, overlay=self.overlay)

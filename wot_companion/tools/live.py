@@ -49,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="Decalage vertical de l'overlay en pixels (+ vers le bas).")
     parser.add_argument("--no-click-through", action="store_true",
                         help="Rend l'overlay cliquable (desactive le click-through).")
+    parser.add_argument("--overlay-debug", action="store_true",
+                        help="Overlay OPAQUE (diagnostic) : sans transparence ni "
+                             "click-through, pour verifier qu'il s'affiche par-dessus le jeu.")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -82,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     runner = LiveRunner(
         settings=settings, host=args.host, port=args.port,
         db_path=args.db, use_color=not args.no_color, overlay=args.overlay,
-        config_path=config_path,
+        config_path=config_path, overlay_debug=args.overlay_debug,
     )
     print(f"Config : {config_path}  (personnalite={settings.personality.value}, "
           f"intensite={settings.intensity}, objectif={settings.session_objective}, "

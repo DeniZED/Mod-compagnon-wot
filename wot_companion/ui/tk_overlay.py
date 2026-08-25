@@ -31,8 +31,11 @@ _MASCOT_W = 150          # largeur reservee a la mascotte a droite
 class TkOverlay(OverlaySink):
     needs_main_thread = True
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, debug_opaque: bool = False) -> None:
         self.settings = settings
+        #: mode diagnostic : fenetre OPAQUE (sans transparence ni click-through),
+        #: pour verifier que la fenetre s'affiche bien par-dessus le jeu.
+        self.debug_opaque = debug_opaque
         self._queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
         self._root = None
         self._canvas = None
@@ -43,6 +46,7 @@ class TkOverlay(OverlaySink):
         self._closing = False
         self._move_mode = False
         self._drag = None
+        self._move_origin = None      # position (x,y) a l'entree en mode deplacement
         self._base_x = 0
         self._base_y = 0
         self._w = 470
@@ -80,15 +84,17 @@ class TkOverlay(OverlaySink):
         self._root = root
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        root.configure(bg=_KEY)
+        bg = _CARD if self.debug_opaque else _KEY
+        root.configure(bg=bg)
 
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         self._base_x, self._base_y = self._anchor_base(sw, sh)
         x = self._base_x + self.settings.ui.offset_x
         y = self._base_y + self.settings.ui.offset_y
+        x, y = self._clamp_on_screen(x, y)
         root.geometry("%dx%d+%d+%d" % (self._w, self._h, x, y))
 
-        self._canvas = tk.Canvas(root, width=self._w, height=self._h, bg=_KEY,
+        self._canvas = tk.Canvas(root, width=self._w, height=self._h, bg=bg,
                                  highlightthickness=0, bd=0)
         self._canvas.pack(fill="both", expand=True)
         self._canvas.bind("<ButtonPress-1>", self._on_press)
@@ -96,12 +102,17 @@ class TkOverlay(OverlaySink):
 
         n = self._load_images(tk)
         root.update_idletasks()
-        win32 = self._set_click_through(self.settings.ui.click_through)
+        if self.debug_opaque:
+            win32 = "MODE OPAQUE (diagnostic : transparence + click-through desactives)"
+        else:
+            win32 = self._set_click_through(self.settings.ui.click_through)
         self._draw_idle(startup=True)
 
         print("[Overlay] fenetre %dx%d @ (%d,%d) | ancrage=%s | images=%d | %s"
               % (self._w, self._h, x, y, self.settings.ui.anchor, n, win32))
         print("[Overlay] Deplacer : maintiens Ctrl et glisse la carte (relache pour fixer).")
+        print("[Overlay] Si rien n'apparait en bataille : mets WoT en 'Fenetre sans "
+              "bordure' (le plein ecran exclusif masque tout overlay).")
 
         root.after(50, self._poll_queue)
         try:
@@ -119,6 +130,23 @@ class TkOverlay(OverlaySink):
         if a == "top_left":
             return m, m
         return sw - self._w - m, m  # top_right (defaut)
+
+    def _clamp_on_screen(self, x: int, y: int) -> tuple[int, int]:
+        """Garde la fenetre dans le bureau virtuel (multi-ecran) : evite qu'un
+        offset memorise pousse l'overlay hors de tout ecran visible."""
+        try:
+            import ctypes
+            gsm = ctypes.windll.user32.GetSystemMetrics
+            vx = gsm(76)   # SM_XVIRTUALSCREEN
+            vy = gsm(77)   # SM_YVIRTUALSCREEN
+            vw = gsm(78)   # SM_CXVIRTUALSCREEN
+            vh = gsm(79)   # SM_CYVIRTUALSCREEN
+            min_vis = 80   # au moins 80 px doivent rester a l'ecran
+            x = max(vx - self._w + min_vis, min(x, vx + vw - min_vis))
+            y = max(vy, min(y, vy + vh - min_vis))
+        except Exception:
+            pass
+        return x, y
 
     def _load_images(self, tk) -> int:
         for path in all_asset_paths():
@@ -175,7 +203,9 @@ class TkOverlay(OverlaySink):
 
     def _enter_move_mode(self) -> None:
         self._move_mode = True
-        self._set_click_through(False)   # capter la souris
+        self._move_origin = (self._root.winfo_x(), self._root.winfo_y())
+        if not self.debug_opaque:
+            self._set_click_through(False)   # capter la souris
         try:
             self._root.config(cursor="fleur")
         except Exception:
@@ -184,19 +214,27 @@ class TkOverlay(OverlaySink):
 
     def _exit_move_mode(self) -> None:
         self._move_mode = False
-        self._set_click_through(self.settings.ui.click_through)
+        if not self.debug_opaque:
+            self._set_click_through(self.settings.ui.click_through)
         try:
             self._root.config(cursor="")
         except Exception:
             pass
-        ox = self._root.winfo_x() - self._base_x
-        oy = self._root.winfo_y() - self._base_y
-        self.settings.ui.offset_x, self.settings.ui.offset_y = ox, oy
-        if self.persist_position:
-            try:
-                self.persist_position(ox, oy)
-            except Exception:
-                logger.exception("persist_position a echoue")
+        # Ne persiste QUE si la fenetre a reellement bouge (evite le spam quand on
+        # relache Ctrl sans avoir deplace).
+        cur = (self._root.winfo_x(), self._root.winfo_y())
+        moved = self._move_origin is None or \
+            abs(cur[0] - self._move_origin[0]) > 2 or abs(cur[1] - self._move_origin[1]) > 2
+        self._move_origin = None
+        if moved:
+            ox = cur[0] - self._base_x
+            oy = cur[1] - self._base_y
+            self.settings.ui.offset_x, self.settings.ui.offset_y = ox, oy
+            if self.persist_position:
+                try:
+                    self.persist_position(ox, oy)
+                except Exception:
+                    logger.exception("persist_position a echoue")
         self._redraw()
 
     def _on_press(self, e):
