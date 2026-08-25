@@ -1,0 +1,8 @@
+[WoTCompanion] === Module importe (build b2). Journal: /home/user/Mod-compagnon-wot/wot_companion/game_adapter/wot_mod/wot_companion.log ===
+[WoTCompanion] Mod charge (build b2). En attente d'une bataille.
+[WoTCompanion] g_playerEvents indisponible, hooks a adapter:
+Traceback (most recent call last):
+  File "mod_wotcompanion.py", line 589, in init
+    from PlayerEvents import g_playerEvents
+ImportError: No module named PlayerEvents
+

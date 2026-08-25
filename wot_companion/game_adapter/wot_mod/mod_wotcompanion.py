@@ -327,6 +327,21 @@ def _iter_arena_vehicles(arena):
     return out
 
 
+def _resolve_session_provider():
+    """Recupere le fournisseur de session de bataille (plusieurs chemins connus)."""
+    sp = _first(
+        lambda: __import__("gui.battle_control", fromlist=["g_sessionProvider"]).g_sessionProvider,
+    )
+    if sp is None:
+        try:
+            from helpers import dependency
+            from skeletons.gui.battle_session import IBattleSessionProvider
+            sp = dependency.instance(IBattleSessionProvider)
+        except Exception:
+            sp = None
+    return sp
+
+
 # --- Cycle de vie de la bataille --------------------------------------------
 class CompanionBridge(object):
     def __init__(self):
@@ -335,6 +350,11 @@ class CompanionBridge(object):
         self.my_team = None
         self._polling = False
         self._start_time = None
+        # Sondes de decouverte pour degats/assist (feedback) et resultats.
+        self._fb_count = 0
+        self._fb_feedback = None
+        self._fb_handler = None
+        self._results_hooked = False
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -377,7 +397,77 @@ class CompanionBridge(object):
             self._schedule(DISCOVERY_DELAY_S,
                            lambda: self.discover(_player(), _get_arena(_player()),
                                                  phase="delayed"))
+        # Sondes degats/assist + resultats (log-only pour l'instant, a cabler
+        # ensuite au vu du log). Ne modifie aucun comportement existant.
+        self._hook_stats_discovery()
         self._start_polling()
+
+    # ---- Sondes degats/assist/resultats (decouverte) -----------------------
+    def _hook_stats_discovery(self):
+        try:
+            sp = _resolve_session_provider()
+            if sp is None:
+                _discovery_log("STATS: session provider introuvable")
+            else:
+                _discovery_log("STATS: session provider = " + type(sp).__name__)
+                shared = getattr(sp, "shared", None)
+                if shared is not None:
+                    _discovery_log("STATS: sp.shared attrs = " +
+                                   ", ".join(sorted(dir(shared)))[:600])
+                feedback = getattr(shared, "feedback", None) if shared else None
+                if feedback is not None and hasattr(feedback, "onPlayerFeedbackReceived"):
+                    self._fb_feedback = feedback
+                    self._fb_handler = self._on_feedback_probe
+                    feedback.onPlayerFeedbackReceived += self._fb_handler
+                    _discovery_log("STATS: hook feedback.onPlayerFeedbackReceived OK")
+                else:
+                    _discovery_log("STATS: feedback/onPlayerFeedbackReceived absent")
+        except Exception:
+            _discovery_log("STATS hook feedback:\n" + traceback.format_exc())
+
+        # Resultats de bataille : on tente de reperer l'evenement.
+        try:
+            from PlayerEvents import g_playerEvents
+            names = [n for n in dir(g_playerEvents) if "attle" in n or "esult" in n]
+            _discovery_log("STATS: g_playerEvents evenements resultats candidats = " + repr(names))
+            if hasattr(g_playerEvents, "onBattleResultsReceived") and not self._results_hooked:
+                g_playerEvents.onBattleResultsReceived += self._on_results_probe
+                self._results_hooked = True
+                _discovery_log("STATS: hook onBattleResultsReceived OK")
+        except Exception:
+            _discovery_log("STATS hook resultats:\n" + traceback.format_exc())
+
+    def _on_feedback_probe(self, event):
+        """Log-only : decrit les 15 premiers evenements de feedback du joueur."""
+        try:
+            if self._fb_count >= 15:
+                return
+            self._fb_count += 1
+            etype = event.getType() if hasattr(event, "getType") else "?"
+            extra = event.getExtra() if hasattr(event, "getExtra") else None
+            extra_name = type(extra).__name__ if extra is not None else "None"
+            extra_attrs = ", ".join(a for a in dir(extra) if a.startswith("get")) if extra else ""
+            dmg = None
+            if extra is not None and hasattr(extra, "getDamage"):
+                try:
+                    dmg = extra.getDamage()
+                except Exception:
+                    dmg = "err"
+            _discovery_log("FEEDBACK type=%r extra=%s getDamage=%r methods=[%s]" %
+                           (etype, extra_name, dmg, extra_attrs[:200]))
+        except Exception:
+            pass
+
+    def _on_results_probe(self, *args):
+        """Log-only : structure des resultats de bataille."""
+        try:
+            results = args[-1] if args else None
+            if hasattr(results, "keys"):
+                _discovery_log("RESULTS keys = " + repr(list(results.keys())[:50]))
+            else:
+                _discovery_log("RESULTS type = " + type(results).__name__ + " args=" + str(len(args)))
+        except Exception:
+            _discovery_log("RESULTS probe:\n" + traceback.format_exc())
 
     def _send_composition(self, arena):
         ally, enemy = {}, {}
@@ -398,6 +488,15 @@ class CompanionBridge(object):
 
     def _on_battle_end(self):
         self._polling = False
+        # Retire le hook de feedback pour eviter les doublons entre batailles.
+        if self._fb_feedback is not None and self._fb_handler is not None:
+            try:
+                self._fb_feedback.onPlayerFeedbackReceived -= self._fb_handler
+            except Exception:
+                pass
+        self._fb_feedback = None
+        self._fb_handler = None
+        self._fb_count = 0
         if self.battle_id is not None:
             self.sender.send("BATTLE_END", {"battle_id": self.battle_id}, self.battle_id)
         self.battle_id = None
