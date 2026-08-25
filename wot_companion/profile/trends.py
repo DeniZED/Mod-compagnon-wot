@@ -48,6 +48,32 @@ def _confidence(n: int) -> float:
     return max(0.0, min(1.0, n / CONFIDENCE_FULL_SAMPLE))
 
 
+def aggregate_records(records: list[BattleRecord]) -> dict:
+    """Agrege un lot de batailles (moyennes DPG/assist, survie, perte HP early)."""
+    n = len(records)
+    if n == 0:
+        return {"sample_size": 0, "confidence": 0.0}
+    return {
+        "sample_size": n,
+        "avg_damage": round(mean(r.damage for r in records)),
+        "avg_assist": round(mean(r.assist for r in records)),
+        "survival_rate": round(mean(1.0 if r.survived else 0.0 for r in records), 3),
+        "hp_lost_early_rate": round(mean(1.0 if r.hp_lost_early else 0.0 for r in records), 3),
+        "avg_kills": round(mean(r.kills for r in records), 2),
+        "confidence": round(_confidence(n), 2),
+        "low_sample": n < MIN_SAMPLE_SIZE,
+    }
+
+
+def group_records(records: list[BattleRecord], key: str) -> dict[str, list[BattleRecord]]:
+    """Regroupe les batailles par attribut (ex: 'vehicle_id', 'vehicle_role')."""
+    groups: dict[str, list[BattleRecord]] = {}
+    for r in records:
+        k = getattr(r, key, None) or "?"
+        groups.setdefault(k, []).append(r)
+    return groups
+
+
 class TrendAnalyzer:
     def __init__(self, store: HistoryStore) -> None:
         self.store = store
@@ -104,6 +130,22 @@ def build_player_profile(store: HistoryStore, window: int = 30) -> dict:
 
     survival = mean(1.0 if b.survived else 0.0 for b in battles)
     hp_early = mean(1.0 if b.hp_lost_early else 0.0 for b in battles)
+
+    # Profil par rôle (section 8.1 : per_role), avec volume et confiance propres.
+    per_role: dict[str, dict] = {}
+    for role, recs in group_records(battles, "vehicle_role").items():
+        if role == "?":
+            continue
+        nr = len(recs)
+        hp_e = mean(1.0 if r.hp_lost_early else 0.0 for r in recs)
+        per_role[role] = {
+            "aggression_early": round(hp_e, 3),
+            "hp_preservation": round(1.0 - hp_e, 3),
+            "survival": round(mean(1.0 if r.survived else 0.0 for r in recs), 3),
+            "sample_size": nr,
+            "confidence": round(_confidence(nr), 3),
+        }
+
     return {
         # aggression_early : plus il perd ses HP tot, plus il ouvre agressivement.
         "aggression_early": round(hp_early, 3),
@@ -112,4 +154,5 @@ def build_player_profile(store: HistoryStore, window: int = 30) -> dict:
         "survival": round(survival, 3),
         "sample_size": n,
         "confidence": round(_confidence(n), 3),
+        "per_role": per_role,
     }

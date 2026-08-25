@@ -24,6 +24,7 @@ wot-companion-sim = "wot_companion.tools.run_simulation:main"
 wot-companion-kbcheck = "wot_companion.tools.kb_check:main"
 wot-companion-live = "wot_companion.tools.live:main"
 wot-companion-inject = "wot_companion.tools.inject:main"
+wot-companion-report = "wot_companion.tools.report:main"
 
 [tool.setuptools.packages.find]
 include = ["wot_companion*"]

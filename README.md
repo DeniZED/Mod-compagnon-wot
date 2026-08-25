@@ -131,6 +131,21 @@ de fini du POC, Annexe C) :
 python -m wot_companion.tools.inject --silence   # bascule ON/OFF
 ```
 
+### Progression : rapport de session & config (E8, GAR-002/003, §18)
+
+Les préférences (personnalité, intensité, objectif) sont **persistées** dans
+`wot_companion_config.json` : le compagnon les retient d'une session à l'autre.
+
+L'historique local (SQLite) se consulte via un **rapport de session** — synthèse
+multi-batailles par véhicule et par rôle, profil de coaching, axe prioritaire :
+
+```bash
+python -m wot_companion.tools.report --db wot_companion.sqlite
+python -m wot_companion.tools.report --db ... --vehicle leopard_1   # filtrer
+python -m wot_companion.tools.report --db ... --export diag.json    # diagnostic non sensible
+python -m wot_companion.tools.report --db ... --reset               # supprimer mes données (§8.2)
+```
+
 ---
 
 ## Architecture (pipeline de décision, §7.1)
