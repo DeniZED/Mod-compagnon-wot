@@ -552,6 +552,34 @@ class CompanionBridge(object):
                              {"allies_alive": allies, "enemies_alive": enemies},
                              self.battle_id)
 
+        # Degats propres en direct (affiches a l'ecran par le jeu = Fair Play).
+        dmg, assist = self._read_live_efficiency()
+        if dmg is not None:
+            self.sender.send("PLAYER_DAMAGE_DEALT", {"total_damage": dmg}, self.battle_id)
+        if assist is not None:
+            self.sender.send("PLAYER_ASSIST", {"total_assist": assist}, self.battle_id)
+
+    def _read_live_efficiency(self):
+        """Lit (degats, assist) propres via personalEfficiencyCtrl. Tolerant :
+        essaie plusieurs accesseurs connus ; retourne (None, None) si indisponible
+        (le nom exact sera confirme par la sonde du journal)."""
+        ec = self._eff_ctrl
+        if ec is None:
+            return None, None
+        eff = _first(lambda: ec.getTotalEfficiency())
+        dmg = _first(
+            lambda: eff.getDamage(),
+            lambda: eff.getDamageDealt(),
+            lambda: ec.getDamage(),
+            lambda: ec.getDamageDealt(),
+        )
+        assist = _first(
+            lambda: eff.getAssist(),
+            lambda: eff.getDamageAssisted(),
+            lambda: ec.getAssist(),
+        )
+        return dmg, assist
+
     def discover(self, p, arena, phase):
         _discovery_log("===== DISCOVERY (%s) %s =====" %
                        (phase, time.strftime("%Y-%m-%d %H:%M:%S")))
