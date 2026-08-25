@@ -146,6 +146,10 @@ class AdviceEngine:
         )
 
         if advice is not None:
+            # HP courant dans le contexte du conseil : l'overlay choisit la
+            # condition de la mascotte (neuf/abime) a partir de la.
+            if self.context.hp_ratio is not None:
+                advice.context.setdefault("hp_pct", round(self.context.hp_ratio * 100))
             advice.text = self.renderer.render(advice)
             entry.decision = "SHOWN"
             entry.advice = advice.as_dict()

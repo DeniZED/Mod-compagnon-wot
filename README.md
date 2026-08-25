@@ -129,9 +129,11 @@ de fini du POC, Annexe C) :
 
 Au lieu de la console, le compagnon peut afficher une **mascotte-char cartoon**
 avec bulle de conseil, en fenêtre transparente, sans bordure, toujours au-dessus
-et **click-through**, ancrée en bas à droite (section 4.1). L'expression change
-selon la gravité (normal / attention / critique / positif). Tkinter (inclus avec
-Python sous Windows), aucune dépendance supplémentaire :
+et **click-through**, ancrée en bas à droite (section 4.1). La mascotte a **12
+visages** (matrice `condition` × `expression`) : la **condition** suit les HP du
+joueur (neuf → abîmé), l'**expression** suit le conseil (confiant, idée, alerte,
+déterminé, inquiet…). Tkinter (inclus avec Python sous Windows), aucune
+dépendance supplémentaire :
 
 ```bash
 python -m wot_companion.tools.live --overlay tk
