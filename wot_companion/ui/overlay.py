@@ -41,6 +41,10 @@ class OverlaySink(ABC):
         mascotte de suivre l'etat du char en direct. No-op par defaut."""
         return None
 
+    def show_garage(self, text: str) -> None:
+        """Message de retour garage (synthese de session). No-op par defaut."""
+        return None
+
 
 class NullOverlay(OverlaySink):
     """Ne fait rien : personnage totalement masque, sans notification."""

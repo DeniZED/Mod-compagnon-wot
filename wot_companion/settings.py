@@ -53,8 +53,10 @@ class ScoringWeights:
 @dataclass
 class AntiSpamSettings:
     """Regles anti-spam (section 11.1). Durees en secondes."""
-    global_cooldown_s: float = 12.0
-    category_cooldown_s: float = 60.0        # 45-90 s propose
+    global_cooldown_s: float = 12.0          # espace deux conseils quelconques
+    # Cooldown de categorie abaisse (parties souvent rapides) : une meme famille
+    # peut redevenir pertinente plus vite, tout en evitant la repetition immediate.
+    category_cooldown_s: float = 45.0        # empeche de repeter LA MEME famille
     bubble_duration_s: float = 5.0
     critical_duration_s: float = 8.0         # 7-9 s
     max_early_advices: int = 3               # hors critique

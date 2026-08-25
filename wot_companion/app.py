@@ -30,6 +30,7 @@ class CompanionApp:
         self.settings = settings or Settings()
         self.knowledge = knowledge or KnowledgeBase()
         self.store = store or HistoryStore(":memory:")
+        self.overlay = overlay
         self.engine = AdviceEngine(
             settings=self.settings, knowledge=self.knowledge, overlay=overlay
         )
@@ -110,6 +111,14 @@ class CompanionApp:
         for line in lines:
             print("  " + line)
         print("------------------------------------\n")
+        # Overlay : remplace le dernier message de combat par la synthese garage,
+        # pour ne pas rester sur un conseil de la partie precedente.
+        if self.overlay is not None and lines:
+            summary = " ".join(line.strip() for line in lines[:2])
+            try:
+                self.overlay.show_garage("Retour garage — " + summary)
+            except Exception:
+                logger.exception("show_garage overlay a echoue")
 
     def close(self) -> None:
         self.store.close()
