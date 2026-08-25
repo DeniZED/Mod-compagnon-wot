@@ -1,19 +1,18 @@
 """Overlay graphique in-game (mascotte cartoon + bulle) en Tkinter.
 
 Fenetre sans bordure, toujours au-dessus, transparente et click-through sous
-Windows (via SetLayeredWindowAttributes + WS_EX_TRANSPARENT, plus fiable que les
-attributs Tk). Une carte HUD est TOUJOURS dessinee : meme si la transparence
-echoue, quelque chose reste visible. Position reglable (ancrage + decalage) pour
-eviter la minimap. Implemente `OverlaySink`.
+Windows (SetLayeredWindowAttributes + WS_EX_TRANSPARENT). Une carte HUD compacte
+est toujours dessinee. La bulle se dimensionne au texte et se place A GAUCHE de la
+mascotte (sans la masquer). Deplacement : maintenir Ctrl et glisser la carte.
 
 La mascotte utilise les 12 visuels (condition x expression) : la CONDITION suit
-les HP du joueur (neuf/abime), l'EXPRESSION suit le conseil.
+les HP (neuf/abime), l'EXPRESSION suit le conseil.
 """
 from __future__ import annotations
 
 import logging
 import queue
-from typing import Any
+from typing import Any, Callable
 
 from ..settings import Settings
 from .mascot import (
@@ -23,10 +22,10 @@ from .overlay import DisplayedAdvice, OverlaySink
 
 logger = logging.getLogger("wot_companion.overlay.tk")
 
-_KEY = "#010203"                 # couleur-cle transparente
-_KEY_COLORREF = 0x00030201       # 0x00BBGGRR pour #010203
-_CARD = "#161d13"                # fond de la carte HUD (visible)
-_CARD_EDGE = "#33421f"
+_KEY = "#010203"
+_KEY_COLORREF = 0x00030201
+_CARD = "#161d13"
+_MASCOT_W = 150          # largeur reservee a la mascotte a droite
 
 
 class TkOverlay(OverlaySink):
@@ -40,9 +39,16 @@ class TkOverlay(OverlaySink):
         self._images: dict[tuple[str, str], Any] = {}
         self._hide_after_id = None
         self._last_condition = "neuf"
+        self._current: dict | None = None
         self._closing = False
-        self._w = 400
-        self._h = 340
+        self._move_mode = False
+        self._drag = None
+        self._base_x = 0
+        self._base_y = 0
+        self._w = 470
+        self._h = 210
+        #: callback(offset_x, offset_y) pour persister la position apres deplacement.
+        self.persist_position: Callable[[int, int], None] | None = None
 
     # ---- API OverlaySink (thread moteur) -----------------------------------
     def show(self, displayed: DisplayedAdvice) -> None:
@@ -72,28 +78,30 @@ class TkOverlay(OverlaySink):
 
         root = tk.Tk()
         self._root = root
-        root.title("WoT Companion")
         root.overrideredirect(True)
         root.attributes("-topmost", True)
         root.configure(bg=_KEY)
 
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        x, y = self._anchor_xy(sw, sh)
+        self._base_x, self._base_y = self._anchor_base(sw, sh)
+        x = self._base_x + self.settings.ui.offset_x
+        y = self._base_y + self.settings.ui.offset_y
         root.geometry("%dx%d+%d+%d" % (self._w, self._h, x, y))
 
         self._canvas = tk.Canvas(root, width=self._w, height=self._h, bg=_KEY,
                                  highlightthickness=0, bd=0)
         self._canvas.pack(fill="both", expand=True)
+        self._canvas.bind("<ButtonPress-1>", self._on_press)
+        self._canvas.bind("<B1-Motion>", self._on_drag)
 
-        n_imgs = self._load_images(tk)
-        root.update_idletasks()  # la fenetre doit exister avant les styles Win32
-        win32 = self._apply_win32()
+        n = self._load_images(tk)
+        root.update_idletasks()
+        win32 = self._set_click_through(self.settings.ui.click_through)
         self._draw_idle(startup=True)
 
         print("[Overlay] fenetre %dx%d @ (%d,%d) | ancrage=%s | images=%d | %s"
-              % (self._w, self._h, x, y, self.settings.ui.anchor, n_imgs, win32))
-        print("[Overlay] Deplacer : --overlay-anchor {top_right,top_left,"
-              "bottom_left,bottom_right} et --overlay-x / --overlay-y (px).")
+              % (self._w, self._h, x, y, self.settings.ui.anchor, n, win32))
+        print("[Overlay] Deplacer : maintiens Ctrl et glisse la carte (relache pour fixer).")
 
         root.after(50, self._poll_queue)
         try:
@@ -101,70 +109,114 @@ class TkOverlay(OverlaySink):
         except KeyboardInterrupt:
             pass
 
-    def _anchor_xy(self, sw, sh):
+    def _anchor_base(self, sw, sh):
         m = 16
         a = self.settings.ui.anchor
-        ox, oy = self.settings.ui.offset_x, self.settings.ui.offset_y
         if a == "bottom_left":
-            x, y = m, sh - self._h - m
-        elif a == "bottom_right":
-            x, y = sw - self._w - m, sh - self._h - m
-        elif a == "top_left":
-            x, y = m, m
-        else:  # top_right (defaut : evite la minimap bas-droite)
-            x, y = sw - self._w - m, m
-        return x + ox, y + oy
+            return m, sh - self._h - m
+        if a == "bottom_right":
+            return sw - self._w - m, sh - self._h - m
+        if a == "top_left":
+            return m, m
+        return sw - self._w - m, m  # top_right (defaut)
 
     def _load_images(self, tk) -> int:
-        subsample = self.settings.ui.text_scale <= 0.9
         for path in all_asset_paths():
             stem = path.stem[len("tank_"):]
             cond, _, expr = stem.partition("_")
             try:
-                img = tk.PhotoImage(file=str(path))
-                if subsample:
-                    img = img.subsample(2, 2)
+                img = tk.PhotoImage(file=str(path)).subsample(2, 2)  # ~140 px
                 self._images[(cond, expr)] = img
             except Exception:
                 logger.warning("Image mascotte introuvable: %s", path.name)
         return len(self._images)
 
-    def _apply_win32(self) -> str:
-        """Transparence (couleur-cle) + click-through via l'API Win32. Retourne un
-        court diagnostic. Sur non-Windows : carte HUD opaque, sans click-through."""
+    # ---- Styles Win32 (transparence + click-through) -----------------------
+    def _hwnd(self):
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        h = u.GetAncestor(self._root.winfo_id(), 2) or self._root.winfo_id()  # GA_ROOT
+        return u, wintypes.HWND(h)
+
+    def _set_click_through(self, enabled: bool) -> str:
         try:
             import ctypes
-            from ctypes import wintypes
             GWL_EXSTYLE = -20
             WS_EX_LAYERED = 0x00080000
             WS_EX_TRANSPARENT = 0x00000020
             WS_EX_TOOLWINDOW = 0x00000080
             LWA_COLORKEY = 0x00000001
-            GA_ROOT = 2
-            u = ctypes.windll.user32
+            u, hwnd = self._hwnd()
             u.GetWindowLongW.restype = ctypes.c_long
-            hwnd = u.GetAncestor(self._root.winfo_id(), GA_ROOT) or self._root.winfo_id()
-            hwnd = wintypes.HWND(hwnd)
-
-            exstyle = WS_EX_LAYERED | WS_EX_TOOLWINDOW
-            if self.settings.ui.click_through:
-                exstyle |= WS_EX_TRANSPARENT
+            base = WS_EX_LAYERED | WS_EX_TOOLWINDOW
+            if enabled:
+                base |= WS_EX_TRANSPARENT
+            # On repart de l'exstyle courant en enlevant TRANSPARENT puis en le
+            # remettant selon 'enabled' (permet de basculer pour le deplacement).
             cur = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            u.SetWindowLongW(hwnd, GWL_EXSTYLE, cur | exstyle)
-            # Definit la couleur-cle transparente ET force le repaint (sinon une
-            # fenetre layered sans attributs reste invisible).
+            cur &= ~WS_EX_TRANSPARENT
+            u.SetWindowLongW(hwnd, GWL_EXSTYLE, cur | base)
             u.SetLayeredWindowAttributes(hwnd, _KEY_COLORREF, 255, LWA_COLORKEY)
-            SWP = 0x0001 | 0x0002 | 0x0004 | 0x0020  # NOMOVE|NOSIZE|NOZORDER|FRAMECHANGED
+            SWP = 0x0001 | 0x0002 | 0x0004 | 0x0020
             u.SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP)
-            ct = "click-through=ON" if self.settings.ui.click_through else "click-through=OFF"
-            return "win32=OK transparence=ON " + ct
+            return "win32=OK transparence=ON click-through=%s" % ("ON" if enabled else "OFF")
         except Exception as exc:
-            return "win32=INDISPONIBLE (%s) - carte opaque, sans click-through" % exc
+            return "win32=INDISPONIBLE (%s)" % exc
+
+    # ---- Deplacement (Ctrl + glisser) --------------------------------------
+    @staticmethod
+    def _ctrl_down() -> bool:
+        try:
+            import ctypes
+            return bool(ctypes.windll.user32.GetAsyncKeyState(0x11) & 0x8000)
+        except Exception:
+            return False
+
+    def _enter_move_mode(self) -> None:
+        self._move_mode = True
+        self._set_click_through(False)   # capter la souris
+        try:
+            self._root.config(cursor="fleur")
+        except Exception:
+            pass
+        self._redraw()
+
+    def _exit_move_mode(self) -> None:
+        self._move_mode = False
+        self._set_click_through(self.settings.ui.click_through)
+        try:
+            self._root.config(cursor="")
+        except Exception:
+            pass
+        ox = self._root.winfo_x() - self._base_x
+        oy = self._root.winfo_y() - self._base_y
+        self.settings.ui.offset_x, self.settings.ui.offset_y = ox, oy
+        if self.persist_position:
+            try:
+                self.persist_position(ox, oy)
+            except Exception:
+                logger.exception("persist_position a echoue")
+        self._redraw()
+
+    def _on_press(self, e):
+        if self._move_mode:
+            self._drag = (e.x_root, e.y_root, self._root.winfo_x(), self._root.winfo_y())
+
+    def _on_drag(self, e):
+        if self._move_mode and self._drag:
+            rx, ry, wx, wy = self._drag
+            self._root.geometry("+%d+%d" % (wx + (e.x_root - rx), wy + (e.y_root - ry)))
 
     # ---- Traitement des messages -------------------------------------------
     def _poll_queue(self) -> None:
         if self._closing:
             return
+        ctrl = self._ctrl_down()
+        if ctrl and not self._move_mode:
+            self._enter_move_mode()
+        elif not ctrl and self._move_mode:
+            self._exit_move_mode()
         try:
             while True:
                 msg = self._queue.get_nowait()
@@ -180,12 +232,8 @@ class TkOverlay(OverlaySink):
     def _render_advice(self, msg: dict) -> None:
         if msg.get("hp_ratio") is not None:
             self._last_condition = condition_for_hp(msg["hp_ratio"])
-        expr = expression_for(msg["category"], msg["severity"], msg["action"])
-        accent = accent_color(msg["severity"])
-        self._canvas.delete("all")
-        self._draw_card(accent)
-        self._draw_mascot(self._last_condition, expr)
-        self._draw_bubble(msg["text"], accent)
+        self._current = msg
+        self._redraw()
         if self._hide_after_id is not None:
             try:
                 self._root.after_cancel(self._hide_after_id)
@@ -194,39 +242,60 @@ class TkOverlay(OverlaySink):
         self._hide_after_id = self._root.after(int(msg["ttl"] * 1000), self._draw_idle)
 
     def _draw_idle(self, startup: bool = False) -> None:
+        self._current = None
+        self._redraw(startup=startup)
+
+    # ---- Dessin ------------------------------------------------------------
+    def _redraw(self, startup: bool = False) -> None:
         if self._canvas is None:
             return
-        self._canvas.delete("all")
-        self._draw_card(_CARD_EDGE)
-        if self.settings.ui.character_visible:
-            self._draw_mascot(self._last_condition, "idle")
-        label = "WoT Companion — prêt" if startup else "WoT Companion"
-        self._canvas.create_text(24, 24, anchor="nw", text=label, fill="#b9c9ac",
-                                 font=("Segoe UI", 11, "bold"))
-
-    def _draw_card(self, accent: str) -> None:
-        self._round_rect(6, 6, self._w - 6, self._h - 6, r=22,
+        c = self._canvas
+        c.delete("all")
+        msg = self._current
+        accent = accent_color(msg["severity"]) if msg else "#5b8f3a"
+        self._round_rect(4, 4, self._w - 4, self._h - 4, r=20,
                          fill=_CARD, outline=accent, width=3)
+        if self.settings.ui.character_visible:
+            expr = expression_for(msg["category"], msg["severity"], msg["action"]) if msg else "idle"
+            self._draw_mascot(self._last_condition, expr)
+        if msg:
+            self._draw_bubble(msg["text"], accent)
+        else:
+            label = "WoT Companion — prêt" if startup else "WoT Companion"
+            c.create_text(20, 18, anchor="nw", text=label, fill="#9db09a",
+                          font=("Segoe UI", 10, "bold"))
+        if self._move_mode:
+            c.create_text(self._w // 2, 12, anchor="n",
+                          text="⋮ Ctrl + glisser pour déplacer — relâche pour fixer",
+                          fill="#ffd27a", font=("Segoe UI", 10, "bold"))
 
     def _draw_mascot(self, condition: str, expression: str) -> None:
-        if not self.settings.ui.character_visible:
-            return
         key = resolve(condition, expression)
         img = self._images.get(key) or self._images.get((condition, "idle")) \
             or self._images.get(("neuf", "idle"))
         if img is not None:
-            self._canvas.create_image(self._w - 16, self._h - 12, image=img, anchor="se")
+            self._canvas.create_image(self._w - 12, self._h - 8, image=img, anchor="se")
 
     def _draw_bubble(self, text: str, accent: str) -> None:
-        pad = 15
-        bx0, by0, bx1, by1 = 16, 16, self._w - 16, 132
-        self._round_rect(bx0, by0, bx1, by1, r=18, fill="#fbf7ea", outline=accent, width=3)
-        font_size = max(11, int(14 * self.settings.ui.text_scale))
-        self._canvas.create_text(bx0 + pad, by0 + pad, anchor="nw", text=text,
-                                 fill="#20242b", font=("Segoe UI", font_size, "bold"),
-                                 width=(bx1 - bx0 - 2 * pad))
+        c = self._canvas
+        pad = 12
+        left = 14
+        right = self._w - _MASCOT_W      # laisse la place a la mascotte a droite
+        wrap = right - left - 2 * pad
+        font_size = max(10, int(13 * self.settings.ui.text_scale))
+        # 1) mesurer le texte, 2) dessiner la bulle a sa taille, 3) placer le texte.
+        t = c.create_text(left + pad, 0, anchor="nw", text=text, fill="#20242b",
+                          font=("Segoe UI", font_size, "bold"), width=wrap)
+        bb = c.bbox(t)
+        text_h = (bb[3] - bb[1]) if bb else 40
+        by1 = self._h - 14
+        by0 = max(10, by1 - (text_h + 2 * pad))
+        r = self._round_rect(left, by0, right, by1, r=16,
+                             fill="#fbf7ea", outline=accent, width=3)
+        c.coords(t, left + pad, by0 + pad)
+        c.tag_lower(r, t)
 
-    def _round_rect(self, x0, y0, x1, y1, r=18, **kw):
+    def _round_rect(self, x0, y0, x1, y1, r=16, **kw):
         pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,
                x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
         return self._canvas.create_polygon(pts, smooth=True, **kw)

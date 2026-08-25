@@ -38,6 +38,18 @@
       "detendu": "Le flanc {flank_label} part en fumee : decroche pendant qu'il est temps.",
       "silencieux": "Flanc {flank_label} : replie-toi."
     },
+    "rotation_advantage": {
+      "coach": "Avantage numerique ({allies_alive} vs {enemies_alive}) : appuie sur ton axe fort avec tes alliees, ne reste pas passif.",
+      "commandant": "{allies_alive}v{enemies_alive}. Appuie l'axe fort.",
+      "detendu": "On a le nombre ({allies_alive}v{enemies_alive}) : pousse l'avantage sur ton flanc.",
+      "silencieux": "Appuie l'axe fort."
+    },
+    "rotation_disadvantage": {
+      "coach": "Tu es en inferiorite ({allies_alive} vs {enemies_alive}) : regroupe-toi vers l'axe fort de l'equipe plutot que de rester isole.",
+      "commandant": "{allies_alive}v{enemies_alive}. Regroupe l'axe fort.",
+      "detendu": "On est en dessous ({allies_alive}v{enemies_alive}), rejoins le gros de l'equipe.",
+      "silencieux": "Regroupe-toi."
+    },
     "endgame_advantage": {
       "coach": "Avantage numerique ({allies_alive} vs {enemies_alive}) : concentrez le feu ensemble pour finir proprement.",
       "commandant": "{allies_alive}v{enemies_alive}. Focus ensemble.",

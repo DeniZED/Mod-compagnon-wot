@@ -43,16 +43,38 @@ class LiveRunner:
         db_path: str | Path = "wot_companion.sqlite",
         use_color: bool = True,
         overlay: str = "console",
+        config_path: str | Path | None = None,
     ) -> None:
         self.settings = settings or Settings()
         self.host = host
         self.port = port
+        self.config_path = config_path
         self.overlay = _build_overlay(overlay, self.settings, use_color)
+        self._wire_overlay_persistence()
         self.store = HistoryStore(db_path)
         self.app = CompanionApp(settings=self.settings, store=self.store, overlay=self.overlay)
         self.adapter = SocketEventServerAdapter(
             host=host, port=port, control_handler=self._on_control
         )
+
+    def _wire_overlay_persistence(self) -> None:
+        """Permet a l'overlay de persister sa position (Ctrl + glisser) dans la config."""
+        if self.config_path is None:
+            return
+        if not hasattr(self.overlay, "persist_position"):
+            return
+
+        def _persist(ox: int, oy: int) -> None:
+            from ..config import save_settings
+            self.settings.ui.offset_x = ox
+            self.settings.ui.offset_y = oy
+            try:
+                save_settings(self.settings, self.config_path)
+                print("[Overlay] Position memorisee (offset %+d, %+d)." % (ox, oy))
+            except Exception:
+                logger.exception("Sauvegarde de la position de l'overlay impossible")
+
+        self.overlay.persist_position = _persist
 
     # ---- Messages de controle (non-jeu) -----------------------------------
     def _on_control(self, env: EventEnvelope) -> None:

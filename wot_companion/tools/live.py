@@ -82,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     runner = LiveRunner(
         settings=settings, host=args.host, port=args.port,
         db_path=args.db, use_color=not args.no_color, overlay=args.overlay,
+        config_path=config_path,
     )
     print(f"Config : {config_path}  (personnalite={settings.personality.value}, "
           f"intensite={settings.intensity}, objectif={settings.session_objective}, "
