@@ -50,6 +50,10 @@ class CandidateAdvice:
     severity: Severity = Severity.INFO
     ttl_seconds: float = 8.0
     cooldown_key: str = ""      # cle de cooldown (souvent = categorie)
+    # Intervalle minimal PROPRE a la regle (s). Si > 0, remplace le cooldown de
+    # categorie/global pour cette regle : utile aux reactions rapides (tir recu)
+    # qui doivent pouvoir s'afficher souvent sans bloquer les autres categories.
+    min_interval_s: float = 0.0
     # Signaux bruts normalises (0..1) fournis par la regle :
     urgency: float = 0.0
     impact: float = 0.0

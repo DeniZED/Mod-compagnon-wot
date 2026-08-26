@@ -34,6 +34,8 @@ WHITELIST: dict[str, frozenset[str]] = {
     EventType.PLAYER_DAMAGE_DEALT.value: frozenset({"damage", "total_damage"}),
     EventType.PLAYER_ASSIST.value: frozenset({"assist", "total_assist"}),
     EventType.PLAYER_POSITION.value: frozenset({"sector", "flank"}),
+    # Feed minimap : positions propres/alliees + ennemis DEJA SPOTTES seulement.
+    EventType.POSITIONS.value: frozenset({"own", "allies", "enemies_spotted"}),
     EventType.ALLY_DESTROYED.value: frozenset({"flank", "allies_alive"}),
     EventType.ENEMY_DESTROYED.value: frozenset({"enemies_alive"}),
     EventType.TEAM_COUNT.value: frozenset({"allies_alive", "enemies_alive"}),

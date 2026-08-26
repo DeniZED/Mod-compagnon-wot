@@ -15,7 +15,8 @@ from wot_companion.ui.mascot import (
 def test_condition_follows_hp():
     assert condition_for_hp(None) == "neuf"     # inconnu -> neuf
     assert condition_for_hp(0.9) == "neuf"
-    assert condition_for_hp(0.5) == "neuf"
+    assert condition_for_hp(0.6) == "neuf"      # seuil exact -> encore neuf
+    assert condition_for_hp(0.5) == "abime"     # a 50% HP -> char abime
     assert condition_for_hp(0.3) == "abime"
 
 
@@ -60,3 +61,31 @@ def test_tk_overlay_module_imports_without_display():
     from wot_companion.ui import tk_overlay
     assert hasattr(tk_overlay, "TkOverlay")
     assert isinstance(tk_overlay.is_available(), bool)
+
+
+class _RecordingSink:
+    """Sink minimal qui enregistre les etats recus (mascotte reactive HP)."""
+    def __init__(self):
+        self.states = []
+        self.shown = []
+
+    def show(self, displayed):
+        self.shown.append(displayed)
+
+    def clear(self):
+        pass
+
+    def notify_state(self, hp_ratio=None):
+        self.states.append(hp_ratio)
+
+
+def test_engine_pushes_live_hp_to_overlay():
+    # La mascotte doit pouvoir suivre les HP en direct, meme sans conseil affiche.
+    from wot_companion.core.engine import AdviceEngine
+    from wot_companion.core.events import EventType, RawEvent
+
+    sink = _RecordingSink()
+    engine = AdviceEngine(overlay=sink)
+    engine.on_event(RawEvent(EventType.BATTLE_START.value, {"battle_id": "b"}))
+    engine.feed(RawEvent(EventType.PLAYER_HP_CHANGED.value, {"hp": 500, "max_hp": 1000}))
+    assert sink.states and abs(sink.states[-1] - 0.5) < 1e-6

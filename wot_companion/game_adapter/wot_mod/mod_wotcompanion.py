@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b2"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b5"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -171,26 +171,37 @@ _log("=== Module importe (build %s). Journal: %s ===" % (BUILD_TAG, _LOG_FILE))
 
 
 # --- Client socket non bloquant ---------------------------------------------
+# REGLE ABSOLUE : le thread PRINCIPAL du jeu ne doit JAMAIS faire d'I/O reseau.
+# send() (appele depuis les callbacks BigWorld = thread principal) se contente
+# d'empiler l'evenement (O(1), sans blocage). Un thread de fond gere connexion et
+# envoi avec un timeout court. Si le compagnon n'est pas lance, les evenements
+# sont simplement jetes : le jeu n'est jamais ralenti (0 fps corrige).
+_CONNECT_TIMEOUT_S = 0.3     # tentative de connexion tres courte (localhost)
+_CONNECT_RETRY_S = 3.0       # on ne retente pas la connexion a chaque evenement
+_QUEUE_MAX = 500             # file bornee : on jette le plus ancien si pleine
+
+
 class _Sender(object):
     def __init__(self, host, port):
         self.host = host
         self.port = port
         self._sock = None
-        self._lock = threading.Lock()
-
-    def ensure_connected(self):
-        if self._sock is not None:
-            return True
+        self._stop = False
+        self._last_attempt = 0.0
         try:
-            import socket  # import differe (voir en-tete)
-            self._sock = socket.create_connection((self.host, self.port), timeout=2.0)
-            _log("Connecte au compagnon %s:%d" % (self.host, self.port))
-            return True
+            import Queue as _q      # Python 2
+        except ImportError:
+            import queue as _q      # Python 3
+        self._queue = _q.Queue(maxsize=_QUEUE_MAX)
+        self._thread = threading.Thread(target=self._run)
+        self._thread.daemon = True   # meurt avec le jeu, ne le maintient pas en vie
+        try:
+            self._thread.start()
         except Exception:
-            self._sock = None
-            return False
+            _log("thread d'envoi non demarre:\n" + traceback.format_exc())
 
     def send(self, event_type, payload=None, battle_id=None):
+        """APPELE SUR LE THREAD PRINCIPAL : empile seulement, aucune I/O ici."""
         env = {
             "schema_version": SCHEMA_VERSION,
             "timestamp_ms": int(time.time() * 1000),
@@ -199,18 +210,56 @@ class _Sender(object):
             "payload": payload or {},
             "fairplay_class": "ALLOW",
         }
-        line = (json.dumps(env) + "\n").encode("utf-8")
-        with self._lock:
-            if not self.ensure_connected():
-                return False
+        try:
+            line = (json.dumps(env) + "\n").encode("utf-8")
+        except Exception:
+            return False
+        try:
+            self._queue.put_nowait(line)
+        except Exception:
+            # File pleine (compagnon absent) : on jette le plus ancien et on
+            # empile le nouveau. Jamais de blocage du thread de jeu.
+            try:
+                self._queue.get_nowait()
+                self._queue.put_nowait(line)
+            except Exception:
+                pass
+        return True
+
+    def _run(self):
+        """Thread de fond : draine la file et envoie. Toute l'I/O est ici."""
+        while not self._stop:
+            try:
+                line = self._queue.get(timeout=0.5)
+            except Exception:
+                continue
+            if line is None:      # signal d'arret
+                break
+            if not self._ensure_connected():
+                continue          # compagnon absent : on jette silencieusement
             try:
                 self._sock.sendall(line)
-                return True
             except Exception:
-                self._close_locked()
-                return False
+                self._close_sock()
 
-    def _close_locked(self):
+    def _ensure_connected(self):
+        if self._sock is not None:
+            return True
+        now = time.time()
+        if now - self._last_attempt < _CONNECT_RETRY_S:
+            return False          # throttle : pas de tentative a chaque evenement
+        self._last_attempt = now
+        try:
+            import socket          # import differe (voir en-tete)
+            self._sock = socket.create_connection(
+                (self.host, self.port), timeout=_CONNECT_TIMEOUT_S)
+            _log("Connecte au compagnon %s:%d" % (self.host, self.port))
+            return True
+        except Exception:
+            self._sock = None
+            return False
+
+    def _close_sock(self):
         if self._sock is not None:
             try:
                 self._sock.close()
@@ -219,8 +268,12 @@ class _Sender(object):
             self._sock = None
 
     def close(self):
-        with self._lock:
-            self._close_locked()
+        self._stop = True
+        try:
+            self._queue.put_nowait(None)   # reveille le thread pour qu'il sorte
+        except Exception:
+            pass
+        self._close_sock()
 
 
 # --- Normalisation -----------------------------------------------------------
@@ -307,6 +360,26 @@ def _get_health(p):
         lambda: p.vehicle.maxHealth,
     )
     return hp, max_hp
+
+
+def _xz(pos):
+    """Normalise une position WoT en [x, z] (plan horizontal), entiers (metres).
+    Tolerant : Vector3 (.x/.y/.z), Vector2 (.x/.y), ou sequence indexable."""
+    if pos is None:
+        return None
+    try:
+        if hasattr(pos, "z") and hasattr(pos, "x"):
+            return [int(round(pos.x)), int(round(pos.z))]
+        if hasattr(pos, "y") and hasattr(pos, "x"):     # Vector2 : (x, y) = plan
+            return [int(round(pos.x)), int(round(pos.y))]
+        n = len(pos)
+        if n >= 3:
+            return [int(round(pos[0])), int(round(pos[2]))]
+        if n == 2:
+            return [int(round(pos[0])), int(round(pos[1]))]
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
 
 
 def _iter_arena_vehicles(arena):
@@ -576,6 +649,60 @@ class CompanionBridge(object):
         if assist is not None:
             self.sender.send("PLAYER_ASSIST", {"total_assist": assist}, self.battle_id)
 
+        # Positions du feed minimap (Fair Play) : soi, allies, ennemis SPOTTES.
+        try:
+            self._send_positions(p, arena)
+        except Exception:
+            _log("positions:\n" + traceback.format_exc())
+
+    def _send_positions(self, p, arena):
+        """Envoie POSITIONS depuis le feed minimap. FAIR PLAY : les positions
+        ennemies proviennent EXCLUSIVEMENT du feed minimap (arena.positions), qui
+        ne contient que des ennemis DEJA SPOTTES — jamais une lecture d'entite
+        ennemie non spottee."""
+        import BigWorld  # noqa: F401
+        feed = _first(
+            lambda: arena.positions,
+            lambda: p.arena.positions,
+            lambda: BigWorld.player().arena.positions,
+        )
+        if not feed:
+            return
+        team_by_vid = {}
+        for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
+            team_by_vid[vid] = team
+
+        own = None
+        allies = []
+        enemies_spotted = []
+        for vid, pos in feed.items():
+            xz = _xz(pos)
+            if xz is None:
+                continue
+            if vid == self._player_vid:
+                own = xz
+                continue
+            team = team_by_vid.get(vid)
+            if team is None:
+                continue
+            if team == self.my_team:
+                allies.append(xz)
+            else:
+                # Present dans le feed minimap => ennemi SPOTTE (visible au joueur).
+                enemies_spotted.append(xz)
+
+        # Position propre : accesseur dedie en priorite (plus fiable que le feed).
+        own = _first(
+            lambda: _xz(p.getOwnVehiclePosition()),
+            lambda: _xz(p.position),
+        ) or own
+
+        if own is None and not allies and not enemies_spotted:
+            return
+        self.sender.send("POSITIONS", {
+            "own": own, "allies": allies, "enemies_spotted": enemies_spotted,
+        }, self.battle_id)
+
     def _read_live_efficiency(self):
         """Lit (degats, assist) propres via personalEfficiencyCtrl. Tolerant :
         essaie plusieurs accesseurs connus ; retourne (None, None) si indisponible
@@ -622,8 +749,54 @@ class CompanionBridge(object):
         for row in vehicles[:4]:
             _discovery_log("    sample vid=%r team=%r class=%r alive=%r" % row)
         _probe("arena.period", lambda: arena.period)
+        self._discover_positions(p, arena)
         _discovery_log("Colle ce bloc au developpeur pour ajuster les hooks.")
         _discovery_log("=====================================")
+
+    def _discover_positions(self, p, arena):
+        """Sonde les positions LISIBLES cote joueur (Fair Play) : sa propre
+        position + les positions du feed minimap (alliees, et ennemis DEJA
+        spottes). Aucune lecture d'ennemi non spotte. On loggue seulement ce qui
+        marche, pour cabler ensuite les regles spatiales."""
+        _discovery_log("  --- POSITIONS (Fair Play : soi + minimap) ---")
+        # 1) Position du joueur (plusieurs accesseurs connus).
+        _probe("own getOwnVehiclePosition", lambda: tuple(p.getOwnVehiclePosition()))
+        _probe("own player.position", lambda: tuple(p.position))
+        _probe("own entity.position",
+               lambda: tuple(__import__("BigWorld").entity(p.playerVehicleID).position))
+        # 2) Feed de positions facon minimap (dict vehicleID -> position).
+        def _positions_dict():
+            import BigWorld
+            src = _first(
+                lambda: arena.positions,
+                lambda: p.arena.positions,
+                lambda: BigWorld.player().arena.positions,
+            )
+            return src
+        try:
+            pos = _positions_dict()
+            if pos:
+                items = list(pos.items())
+                _discovery_log("  OK   arena.positions : %d entrees" % len(items))
+                team_by_vid = {}
+                for vid, team, klass, alive in _iter_arena_vehicles(arena):
+                    team_by_vid[vid] = team
+                for vid, xz in items[:6]:
+                    _discovery_log("    pos vid=%r team=%r xz=%r"
+                                   % (vid, team_by_vid.get(vid), tuple(xz) if xz is not None else None))
+            else:
+                _discovery_log("  FAIL arena.positions : introuvable/vide")
+        except Exception as exc:
+            _discovery_log("  FAIL arena.positions : %s" % exc)
+        # 3) Piste alternative : controleur minimap / vehicles info du sessionProvider.
+        try:
+            sp = _resolve_session_provider()
+            _probe("sessionProvider.shared.feedback",
+                   lambda: sp.shared.feedback is not None)
+            _probe("sessionProvider arenaDP getVehiclesInfoIterator",
+                   lambda: hasattr(sp.getArenaDP(), "getVehiclesInfoIterator"))
+        except Exception as exc:
+            _discovery_log("  FAIL sessionProvider positions : %s" % exc)
 
 
 # --- Point d'entree du mod ---------------------------------------------------

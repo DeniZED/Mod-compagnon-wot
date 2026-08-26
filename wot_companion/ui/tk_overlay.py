@@ -25,24 +25,28 @@ logger = logging.getLogger("wot_companion.overlay.tk")
 _KEY = "#010203"
 _KEY_COLORREF = 0x00030201
 _CARD = "#161d13"
-_MASCOT_W = 150          # largeur reservee a la mascotte a droite
+_MASCOT_W = 168          # zone reservee a la mascotte a droite (+ espace bulle)
+_GARAGE_ACCENT = "#7a5cc0"  # bulle de retour garage (teinte distincte)
 
 
 class TkOverlay(OverlaySink):
     needs_main_thread = True
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, debug_opaque: bool = False) -> None:
         self.settings = settings
+        #: mode diagnostic : fenetre OPAQUE (sans transparence ni click-through),
+        #: pour verifier que la fenetre s'affiche bien par-dessus le jeu.
+        self.debug_opaque = debug_opaque
         self._queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
         self._root = None
         self._canvas = None
         self._images: dict[tuple[str, str], Any] = {}
-        self._hide_after_id = None
         self._last_condition = "neuf"
         self._current: dict | None = None
         self._closing = False
         self._move_mode = False
         self._drag = None
+        self._move_origin = None      # position (x,y) a l'entree en mode deplacement
         self._base_x = 0
         self._base_y = 0
         self._w = 470
@@ -64,6 +68,16 @@ class TkOverlay(OverlaySink):
     def clear(self) -> None:
         self._queue.put({"clear": True})
 
+    def notify_state(self, hp_ratio: float | None = None) -> None:
+        if hp_ratio is not None:
+            self._queue.put({"state_hp_ratio": hp_ratio})
+
+    def show_garage(self, text: str) -> None:
+        self._queue.put({
+            "text": text, "severity": "POSITIVE", "category": "GARAGE",
+            "action": "", "hp_ratio": 1.0, "ttl": 0.0, "garage": True,
+        })
+
     def stop(self) -> None:
         self._closing = True
         if self._root is not None:
@@ -80,15 +94,17 @@ class TkOverlay(OverlaySink):
         self._root = root
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        root.configure(bg=_KEY)
+        bg = _CARD if self.debug_opaque else _KEY
+        root.configure(bg=bg)
 
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         self._base_x, self._base_y = self._anchor_base(sw, sh)
         x = self._base_x + self.settings.ui.offset_x
         y = self._base_y + self.settings.ui.offset_y
+        x, y = self._clamp_on_screen(x, y)
         root.geometry("%dx%d+%d+%d" % (self._w, self._h, x, y))
 
-        self._canvas = tk.Canvas(root, width=self._w, height=self._h, bg=_KEY,
+        self._canvas = tk.Canvas(root, width=self._w, height=self._h, bg=bg,
                                  highlightthickness=0, bd=0)
         self._canvas.pack(fill="both", expand=True)
         self._canvas.bind("<ButtonPress-1>", self._on_press)
@@ -96,12 +112,17 @@ class TkOverlay(OverlaySink):
 
         n = self._load_images(tk)
         root.update_idletasks()
-        win32 = self._set_click_through(self.settings.ui.click_through)
+        if self.debug_opaque:
+            win32 = "MODE OPAQUE (diagnostic : transparence + click-through desactives)"
+        else:
+            win32 = self._set_click_through(self.settings.ui.click_through)
         self._draw_idle(startup=True)
 
         print("[Overlay] fenetre %dx%d @ (%d,%d) | ancrage=%s | images=%d | %s"
               % (self._w, self._h, x, y, self.settings.ui.anchor, n, win32))
         print("[Overlay] Deplacer : maintiens Ctrl et glisse la carte (relache pour fixer).")
+        print("[Overlay] Si rien n'apparait en bataille : mets WoT en 'Fenetre sans "
+              "bordure' (le plein ecran exclusif masque tout overlay).")
 
         root.after(50, self._poll_queue)
         try:
@@ -119,6 +140,23 @@ class TkOverlay(OverlaySink):
         if a == "top_left":
             return m, m
         return sw - self._w - m, m  # top_right (defaut)
+
+    def _clamp_on_screen(self, x: int, y: int) -> tuple[int, int]:
+        """Garde la fenetre dans le bureau virtuel (multi-ecran) : evite qu'un
+        offset memorise pousse l'overlay hors de tout ecran visible."""
+        try:
+            import ctypes
+            gsm = ctypes.windll.user32.GetSystemMetrics
+            vx = gsm(76)   # SM_XVIRTUALSCREEN
+            vy = gsm(77)   # SM_YVIRTUALSCREEN
+            vw = gsm(78)   # SM_CXVIRTUALSCREEN
+            vh = gsm(79)   # SM_CYVIRTUALSCREEN
+            min_vis = 80   # au moins 80 px doivent rester a l'ecran
+            x = max(vx - self._w + min_vis, min(x, vx + vw - min_vis))
+            y = max(vy, min(y, vy + vh - min_vis))
+        except Exception:
+            pass
+        return x, y
 
     def _load_images(self, tk) -> int:
         for path in all_asset_paths():
@@ -175,7 +213,9 @@ class TkOverlay(OverlaySink):
 
     def _enter_move_mode(self) -> None:
         self._move_mode = True
-        self._set_click_through(False)   # capter la souris
+        self._move_origin = (self._root.winfo_x(), self._root.winfo_y())
+        if not self.debug_opaque:
+            self._set_click_through(False)   # capter la souris
         try:
             self._root.config(cursor="fleur")
         except Exception:
@@ -184,19 +224,27 @@ class TkOverlay(OverlaySink):
 
     def _exit_move_mode(self) -> None:
         self._move_mode = False
-        self._set_click_through(self.settings.ui.click_through)
+        if not self.debug_opaque:
+            self._set_click_through(self.settings.ui.click_through)
         try:
             self._root.config(cursor="")
         except Exception:
             pass
-        ox = self._root.winfo_x() - self._base_x
-        oy = self._root.winfo_y() - self._base_y
-        self.settings.ui.offset_x, self.settings.ui.offset_y = ox, oy
-        if self.persist_position:
-            try:
-                self.persist_position(ox, oy)
-            except Exception:
-                logger.exception("persist_position a echoue")
+        # Ne persiste QUE si la fenetre a reellement bouge (evite le spam quand on
+        # relache Ctrl sans avoir deplace).
+        cur = (self._root.winfo_x(), self._root.winfo_y())
+        moved = self._move_origin is None or \
+            abs(cur[0] - self._move_origin[0]) > 2 or abs(cur[1] - self._move_origin[1]) > 2
+        self._move_origin = None
+        if moved:
+            ox = cur[0] - self._base_x
+            oy = cur[1] - self._base_y
+            self.settings.ui.offset_x, self.settings.ui.offset_y = ox, oy
+            if self.persist_position:
+                try:
+                    self.persist_position(ox, oy)
+                except Exception:
+                    logger.exception("persist_position a echoue")
         self._redraw()
 
     def _on_press(self, e):
@@ -222,6 +270,8 @@ class TkOverlay(OverlaySink):
                 msg = self._queue.get_nowait()
                 if msg.get("clear"):
                     self._draw_idle()
+                elif "state_hp_ratio" in msg:
+                    self._update_condition(msg["state_hp_ratio"])
                 else:
                     self._render_advice(msg)
         except queue.Empty:
@@ -229,17 +279,21 @@ class TkOverlay(OverlaySink):
         if self._root is not None:
             self._root.after(50, self._poll_queue)
 
+    def _update_condition(self, hp_ratio: float) -> None:
+        """Suit l'etat du char (neuf/abime) en direct et redessine si change."""
+        cond = condition_for_hp(hp_ratio)
+        if cond != self._last_condition:
+            self._last_condition = cond
+            self._redraw()
+
     def _render_advice(self, msg: dict) -> None:
         if msg.get("hp_ratio") is not None:
             self._last_condition = condition_for_hp(msg["hp_ratio"])
         self._current = msg
         self._redraw()
-        if self._hide_after_id is not None:
-            try:
-                self._root.after_cancel(self._hide_after_id)
-            except Exception:
-                pass
-        self._hide_after_id = self._root.after(int(msg["ttl"] * 1000), self._draw_idle)
+        # Le dernier conseil RESTE affiche jusqu'au suivant (pas de "carre vide") :
+        # on n'efface plus automatiquement au bout du TTL. Le message ne disparait
+        # qu'au changement de bataille (clear()).
 
     def _draw_idle(self, startup: bool = False) -> None:
         self._current = None
@@ -252,21 +306,20 @@ class TkOverlay(OverlaySink):
         c = self._canvas
         c.delete("all")
         msg = self._current
-        accent = accent_color(msg["severity"]) if msg else "#5b8f3a"
-        self._round_rect(4, 4, self._w - 4, self._h - 4, r=20,
-                         fill=_CARD, outline=accent, width=3)
+        # Plus de grande carte de fond : uniquement la mascotte + la bulle de texte
+        # (le reste de la fenetre est transparent). Prend moins de place a l'ecran.
         if self.settings.ui.character_visible:
             expr = expression_for(msg["category"], msg["severity"], msg["action"]) if msg else "idle"
             self._draw_mascot(self._last_condition, expr)
         if msg:
+            accent = _GARAGE_ACCENT if msg.get("garage") else accent_color(msg["severity"])
             self._draw_bubble(msg["text"], accent)
-        else:
-            label = "WoT Companion — prêt" if startup else "WoT Companion"
-            c.create_text(20, 18, anchor="nw", text=label, fill="#9db09a",
-                          font=("Segoe UI", 10, "bold"))
         if self._move_mode:
-            c.create_text(self._w // 2, 12, anchor="n",
-                          text="⋮ Ctrl + glisser pour déplacer — relâche pour fixer",
+            # En mode deplacement, un reperage discret pour saisir la fenetre.
+            self._round_rect(2, 2, self._w - 2, self._h - 2, r=18,
+                             fill=_KEY, outline="#ffd27a", width=2)
+            c.create_text(self._w // 2, 10, anchor="n",
+                          text="⋮ Ctrl + glisser — relâche pour fixer",
                           fill="#ffd27a", font=("Segoe UI", 10, "bold"))
 
     def _draw_mascot(self, condition: str, expression: str) -> None:
@@ -274,13 +327,13 @@ class TkOverlay(OverlaySink):
         img = self._images.get(key) or self._images.get((condition, "idle")) \
             or self._images.get(("neuf", "idle"))
         if img is not None:
-            self._canvas.create_image(self._w - 12, self._h - 8, image=img, anchor="se")
+            self._canvas.create_image(self._w - 8, self._h - 8, image=img, anchor="se")
 
     def _draw_bubble(self, text: str, accent: str) -> None:
         c = self._canvas
         pad = 12
-        left = 14
-        right = self._w - _MASCOT_W      # laisse la place a la mascotte a droite
+        left = 10
+        right = self._w - _MASCOT_W      # laisse la place a la mascotte + un espace
         wrap = right - left - 2 * pad
         font_size = max(10, int(13 * self.settings.ui.text_scale))
         # 1) mesurer le texte, 2) dessiner la bulle a sa taille, 3) placer le texte.
@@ -288,12 +341,16 @@ class TkOverlay(OverlaySink):
                           font=("Segoe UI", font_size, "bold"), width=wrap)
         bb = c.bbox(t)
         text_h = (bb[3] - bb[1]) if bb else 40
-        by1 = self._h - 14
+        by1 = self._h - 16
         by0 = max(10, by1 - (text_h + 2 * pad))
         r = self._round_rect(left, by0, right, by1, r=16,
                              fill="#fbf7ea", outline=accent, width=3)
         c.coords(t, left + pad, by0 + pad)
         c.tag_lower(r, t)
+        # Petit ergot de bulle pointant vers la mascotte (a droite).
+        tip_y = (by0 + by1) / 2
+        c.create_polygon(right, tip_y - 9, right + 12, tip_y, right, tip_y + 9,
+                         fill="#fbf7ea", outline=accent, width=2)
 
     def _round_rect(self, x0, y0, x1, y1, r=16, **kw):
         pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,

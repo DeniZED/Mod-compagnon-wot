@@ -12,7 +12,9 @@ def _features(phase=BattlePhase.MID) -> Features:
     return Features(phase=phase, hp_ratio=0.8, numeric_balance=0,
                     time_since_contribution_s=0, flank_collapsing=False,
                     outnumbered_locally=False, endgame_few_left=False,
-                    contribution_total=0)
+                    contribution_total=0, took_damage_recently=False,
+                    damage_taken_ratio=0.0, nearest_ally_dist=None, allies_near=0,
+                    enemies_spotted_near=0, isolated=False, overextended=False)
 
 
 def _cand(rule_id, cat, urgency=0.8, impact=0.8, confidence=1.0,
@@ -62,6 +64,21 @@ def test_cooldown_blocks_repetition():
     assert arb.select([c], features=_features()) is None
     arb.set_clock(400)  # bien au-dela du cooldown
     assert arb.select([c], features=_features()) is not None
+
+
+def test_reaction_min_interval_overrides_category_cooldown():
+    # Une reaction (min_interval_s) doit pouvoir se repeter bien avant le cooldown
+    # de categorie (60 s), mais reste espacee par son intervalle propre.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    react = _cand("reaction.hit", AdviceCategory.REACTION, urgency=0.6, impact=0.5)
+    react.min_interval_s = 9.0
+    arb.set_clock(100)
+    assert arb.select([react], features=_features()) is not None
+    arb.set_clock(105)  # < intervalle propre -> bloque
+    assert arb.select([react], features=_features()) is None
+    arb.set_clock(110)  # >= 9 s -> repasse, bien avant les 60 s de categorie
+    assert arb.select([react], features=_features()) is not None
 
 
 def test_critical_bypasses_global_cooldown_but_not_category():

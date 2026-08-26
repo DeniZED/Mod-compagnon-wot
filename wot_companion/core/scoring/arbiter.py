@@ -20,7 +20,10 @@ _SEVERITY_RANK = {
     Severity.CRITICAL: 3, Severity.ATTENTION: 2,
     Severity.INFO: 1, Severity.POSITIVE: 0,
 }
-_PHASE_INTRUSION = {BattlePhase.EARLY: 0.1, BattlePhase.MID: 0.35, BattlePhase.LATE: 0.5}
+# Caractere intrusif du moment (penalise le score). Abaisse en milieu/fin de
+# partie : c'est justement la que le joueur a besoin de reperes, et l'ancienne
+# valeur etouffait tous les conseils sauf le plan initial.
+_PHASE_INTRUSION = {BattlePhase.EARLY: 0.1, BattlePhase.MID: 0.22, BattlePhase.LATE: 0.35}
 
 
 @dataclass
@@ -65,10 +68,24 @@ class AdviceArbiter:
     def _passes_cooldown(self, cand: CandidateAdvice, now_s: float, is_critical: bool) -> bool:
         a = self.settings.anti_spam
         st = self.state
+        # Reaction rapide (tir recu...) : intervalle PROPRE a la regle, qui
+        # court-circuite les cooldowns categorie/global pour rester reactif sans
+        # bloquer les autres familles de conseils.
+        if cand.min_interval_s > 0:
+            last_rule = st.last_rule_s.get(cand.rule_id)
+            return last_rule is None or now_s - last_rule >= cand.min_interval_s
         # Le cooldown de categorie s'applique TOUJOURS, y compris au critique :
         # il empeche de repeter le meme conseil tant que sa condition persiste
         # (REC-03). Un critique ne contourne que le cooldown GLOBAL et le
         # plafond early game, afin de pouvoir interrompre un conseil mineur.
+        # Conseils positifs : desactivables, et espaces par un cooldown dedie
+        # (rares par nature, section 11.1) pour rester sinceres et non intrusifs.
+        if cand.category is AdviceCategory.POSITIVE:
+            if not a.positive_enabled:
+                return False
+            if (st.last_positive_s is not None
+                    and now_s - st.last_positive_s < a.positive_rare_cooldown_s):
+                return False
         last_cat = st.last_category_s.get(cand.category.value)
         if last_cat is not None and now_s - last_cat < a.category_cooldown_s:
             return False
@@ -102,7 +119,11 @@ class AdviceArbiter:
             if s.personality.value == "silencieux" and not is_critical:
                 continue
 
-            repetition = self._repetition_factor(cand, now_s)
+            # Les reactions gerent leur propre cadence (min_interval_s) : on ne
+            # leur applique pas la penalite de repetition, sinon elles ne
+            # pourraient jamais se repeter sous le feu.
+            repetition = 0.0 if cand.min_interval_s > 0 \
+                else self._repetition_factor(cand, now_s)
             intrusion = _PHASE_INTRUSION.get(features.phase, 0.3)
             breakdown = self.scorer.score(
                 cand, repetition=repetition, intrusion=intrusion,

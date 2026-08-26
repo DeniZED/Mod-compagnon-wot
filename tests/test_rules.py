@@ -6,6 +6,9 @@ from wot_companion.core.context.features import FeatureBuilder
 from wot_companion.core.rules.base import RuleContext
 from wot_companion.core.rules.hp_management import HpManagementRule
 from wot_companion.core.rules.initial_plan import InitialPlanRule
+from wot_companion.core.rules.positioning import PositioningRule
+from wot_companion.core.rules.positive import PositiveReinforcementRule
+from wot_companion.core.rules.reaction import HitTakenReactionRule
 from wot_companion.core.rules.retreat import RetreatRule
 from wot_companion.core.rules.rotation import NumericAwarenessRule
 from wot_companion.core.rules.tempo import TempoInitiativeRule
@@ -133,3 +136,132 @@ def test_rotation_rule_no_push_when_low_hp():
     ctx.allies_alive, ctx.enemies_alive = 10, 7
     ctx.hp_ratio = 0.3
     assert NumericAwarenessRule().evaluate(_rc(ctx)) == []
+
+
+def test_positive_rule_fires_when_healthy_midgame():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300  # hors ouverture
+    ctx.hp_ratio = 0.85
+    out = PositiveReinforcementRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "ENCOURAGE_HP"
+    assert out[0].severity.value == "POSITIVE"
+
+
+def test_positive_rule_silent_in_early_phase():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 30
+    ctx.hp_ratio = 0.95
+    assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
+
+
+def test_positive_rule_silent_when_hurt():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.hp_ratio = 0.4  # abime -> pas de compliment
+    assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
+
+
+def test_positive_rule_silent_when_outnumbered():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    ctx.hp_ratio = 0.9
+    ctx.allies_alive, ctx.enemies_alive = 5, 9  # nette inferiorite
+    assert PositiveReinforcementRule().evaluate(_rc(ctx)) == []
+
+
+def test_reaction_fires_on_recent_damage_armored():
+    ctx = BattleContext(battle_id="b", start_ms=0, vehicle_role="support_heavy")
+    ctx.elapsed_s = 200
+    ctx.hp_ratio = 0.7
+    ctx.last_damage_taken_s = 199  # touche il y a 1 s
+    ctx.last_damage_taken_ratio = 0.15
+    out = HitTakenReactionRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "USE_ARMOR"  # char blinde -> angle
+    assert out[0].min_interval_s > 0  # cadence propre a la reaction
+
+
+def test_reaction_fragile_role_breaks_los():
+    # Un char fragile (sniper) qui encaisse doit casser la ligne de vue, pas angler.
+    ctx = BattleContext(battle_id="b", start_ms=0, vehicle_role="sniper_medium")
+    ctx.elapsed_s = 200
+    ctx.hp_ratio = 0.7
+    ctx.last_damage_taken_s = 200
+    ctx.last_damage_taken_ratio = 0.1
+    out = HitTakenReactionRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "BREAK_LOS"
+
+
+def test_reaction_silent_without_recent_damage():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 200
+    ctx.hp_ratio = 0.7
+    ctx.last_damage_taken_s = 150  # trop ancien (> fenetre)
+    assert HitTakenReactionRule().evaluate(_rc(ctx)) == []
+
+
+def test_reaction_breaks_contact_when_low():
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 200
+    ctx.hp_ratio = 0.2
+    ctx.last_damage_taken_s = 200
+    ctx.last_damage_taken_ratio = 0.1
+    out = HitTakenReactionRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "BREAK_CONTACT"
+
+
+def _pos_ctx(own, allies, enemies, elapsed=300.0):
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = elapsed
+    ctx.own_pos = own
+    ctx.ally_positions = allies
+    ctx.enemy_positions_spotted = enemies
+    return ctx
+
+
+def test_positioning_local_threat():
+    # 2 ennemis spottes proches, aucun allie proche -> sous-nombre local.
+    ctx = _pos_ctx((0, 0), [(400, 0)], [(100, 0), (120, 0)])
+    out = PositioningRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "LOCAL_OUTNUMBERED"
+
+
+def test_positioning_isolated():
+    # Allie le plus proche a 300 m, aucun ennemi -> isolement.
+    ctx = _pos_ctx((0, 0), [(300, 0)], [])
+    out = PositioningRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "REGROUP"
+
+
+def test_positioning_overextended():
+    # Joueur nettement devant le centre allie, front ennemi loin devant.
+    ctx = _pos_ctx((0, 0), [(-300, 0)], [(300, 0)])
+    out = PositioningRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "FALL_BACK_TEMPO"
+
+
+def test_positioning_silent_without_positions():
+    # Fallback sûr : aucune position -> silence.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    assert PositioningRule().evaluate(_rc(ctx)) == []
+
+
+def test_positioning_silent_when_supported():
+    # Allie a portee, pas de menace -> rien a dire.
+    ctx = _pos_ctx((0, 0), [(50, 0)], [])
+    assert PositioningRule().evaluate(_rc(ctx)) == []
+
+
+def test_context_tracks_damage_taken():
+    from wot_companion.core.events import EventType, RawEvent
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 50
+    ctx.apply(RawEvent(EventType.PLAYER_HP_CHANGED.value, {"hp": 1000, "max_hp": 1000}))
+    ctx.elapsed_s = 60
+    ctx.apply(RawEvent(EventType.PLAYER_HP_CHANGED.value, {"hp": 700, "max_hp": 1000}))
+    assert ctx.last_damage_taken_s == 60
+    assert abs(ctx.last_damage_taken_ratio - 0.3) < 1e-6
+    # Une remontee de HP (kit) n'est PAS un degat subi.
+    ctx.elapsed_s = 70
+    ctx.apply(RawEvent(EventType.PLAYER_HP_CHANGED.value, {"hp": 900, "max_hp": 1000}))
+    assert ctx.last_damage_taken_s == 60  # inchange

@@ -111,6 +111,14 @@ class AdviceEngine:
         if self.context is None or self.context.finished:
             return None
 
+        # Etat de jeu continu vers l'overlay (mascotte reactive aux HP), meme
+        # quand aucun conseil n'est affiche.
+        if self.overlay is not None:
+            try:
+                self.overlay.notify_state(hp_ratio=self.context.hp_ratio)
+            except Exception:
+                logger.exception("notify_state overlay a echoue")
+
         features = self.features_builder.build(self.context)
         self.arbiter.set_clock(self.context.elapsed_s)
 
