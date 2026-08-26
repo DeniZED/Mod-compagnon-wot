@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b6"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b7"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -430,6 +430,7 @@ class CompanionBridge(object):
         self._dead_sent = False        # HP=0 deja envoye pour cette bataille
         self._player_vid = None        # id du vehicule du joueur dans l'arene
         self._pos_log_ctr = 0          # throttle du log de diagnostic positions
+        self._enemy_dumped = False      # dump unique des attributs d'une entite ennemie
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -672,6 +673,7 @@ class CompanionBridge(object):
         )
         allies = []
         enemies_spotted = []
+        enemies_present = 0
         for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
             if not is_alive or vid == self._player_vid:
                 continue
@@ -683,21 +685,40 @@ class CompanionBridge(object):
                 continue
             if team == self.my_team:
                 allies.append(xz)
-            elif self._enemy_is_spotted(ent):
-                enemies_spotted.append(xz)
+            else:
+                enemies_present += 1
+                self._dump_enemy_once(ent)   # diagnostic : trouver le bon drapeau
+                if self._enemy_is_spotted(ent):
+                    enemies_spotted.append(xz)
 
         # Diagnostic throttle (~toutes les 15 poll = 30 s) : visible dans le log
         # pour confirmer que les positions circulent en cours de bataille.
         self._pos_log_ctr += 1
         if self._pos_log_ctr % 15 == 1:
-            _log("POSITIONS: own=%s allies=%d ennemis_spottes=%d"
-                 % ("oui" if own else "non", len(allies), len(enemies_spotted)))
+            _log("POSITIONS: own=%s allies=%d ennemis_presents=%d ennemis_spottes=%d"
+                 % ("oui" if own else "non", len(allies), enemies_present,
+                    len(enemies_spotted)))
 
         if own is None and not allies and not enemies_spotted:
             return
         self.sender.send("POSITIONS", {
             "own": own, "allies": allies, "enemies_spotted": enemies_spotted,
         }, self.battle_id)
+
+    def _dump_enemy_once(self, ent):
+        """Log unique des attributs "spotted/visible" d'une VRAIE entite ennemie
+        (mi-bataille), pour verrouiller le bon drapeau Fair Play."""
+        if getattr(self, "_enemy_dumped", False):
+            return
+        self._enemy_dumped = True
+        try:
+            names = [a for a in dir(ent)
+                     if any(k in a.lower() for k in ("spot", "visib", "observ", "detect"))]
+            _log("ENEMY DUMP classe=%s isSpotted=%r attrs=%r"
+                 % (ent.__class__.__name__,
+                    _first(lambda: ent.isSpotted), names[:20]))
+        except Exception:
+            _log("ENEMY DUMP:\n" + traceback.format_exc())
 
     @staticmethod
     def _enemy_is_spotted(ent):
