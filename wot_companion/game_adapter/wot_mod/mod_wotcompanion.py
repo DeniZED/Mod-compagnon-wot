@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b5"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b6"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -429,6 +429,7 @@ class CompanionBridge(object):
         self._max_hp = None            # HP max memorise (pour signaler la mort)
         self._dead_sent = False        # HP=0 deja envoye pour cette bataille
         self._player_vid = None        # id du vehicule du joueur dans l'arene
+        self._pos_log_ctr = 0          # throttle du log de diagnostic positions
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -656,52 +657,57 @@ class CompanionBridge(object):
             _log("positions:\n" + traceback.format_exc())
 
     def _send_positions(self, p, arena):
-        """Envoie POSITIONS depuis le feed minimap. FAIR PLAY : les positions
-        ennemies proviennent EXCLUSIVEMENT du feed minimap (arena.positions), qui
-        ne contient que des ennemis DEJA SPOTTES — jamais une lecture d'entite
-        ennemie non spottee."""
-        import BigWorld  # noqa: F401
-        feed = _first(
-            lambda: arena.positions,
-            lambda: p.arena.positions,
-            lambda: BigWorld.player().arena.positions,
-        )
-        if not feed:
-            return
-        team_by_vid = {}
-        for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
-            team_by_vid[vid] = team
+        """Envoie POSITIONS a partir des entites repliquees au client.
 
-        own = None
-        allies = []
-        enemies_spotted = []
-        for vid, pos in feed.items():
-            xz = _xz(pos)
-            if xz is None:
-                continue
-            if vid == self._player_vid:
-                own = xz
-                continue
-            team = team_by_vid.get(vid)
-            if team is None:
-                continue
-            if team == self.my_team:
-                allies.append(xz)
-            else:
-                # Present dans le feed minimap => ennemi SPOTTE (visible au joueur).
-                enemies_spotted.append(xz)
+        FAIR PLAY : le serveur ne replique au client QUE les vehicules qu'il a le
+        droit de voir — son char, ses allies a portee, et les ennemis DEJA
+        SPOTTES. Un ennemi non spotte n'existe pas cote client (BigWorld.entity
+        echoue). En plus, on n'inclut un ennemi que si son drapeau `isSpotted`
+        est vrai. Aucune lecture de position d'ennemi non spotte."""
+        import BigWorld
 
-        # Position propre : accesseur dedie en priorite (plus fiable que le feed).
         own = _first(
             lambda: _xz(p.getOwnVehiclePosition()),
             lambda: _xz(p.position),
-        ) or own
+        )
+        allies = []
+        enemies_spotted = []
+        for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
+            if not is_alive or vid == self._player_vid:
+                continue
+            ent = _first(lambda: BigWorld.entity(vid))
+            if ent is None:
+                continue      # pas replique = hors de vue (ennemi non spotte, etc.)
+            xz = _xz(_first(lambda: ent.position))
+            if xz is None:
+                continue
+            if team == self.my_team:
+                allies.append(xz)
+            elif self._enemy_is_spotted(ent):
+                enemies_spotted.append(xz)
+
+        # Diagnostic throttle (~toutes les 15 poll = 30 s) : visible dans le log
+        # pour confirmer que les positions circulent en cours de bataille.
+        self._pos_log_ctr += 1
+        if self._pos_log_ctr % 15 == 1:
+            _log("POSITIONS: own=%s allies=%d ennemis_spottes=%d"
+                 % ("oui" if own else "non", len(allies), len(enemies_spotted)))
 
         if own is None and not allies and not enemies_spotted:
             return
         self.sender.send("POSITIONS", {
             "own": own, "allies": allies, "enemies_spotted": enemies_spotted,
         }, self.battle_id)
+
+    @staticmethod
+    def _enemy_is_spotted(ent):
+        """Vrai uniquement si l'ennemi est explicitement spotte (visible au
+        joueur). En l'absence de drapeau fiable, on EXCLUT (defaut sûr)."""
+        val = _first(
+            lambda: bool(ent.isSpotted),
+            lambda: bool(ent.appearance.isVisible),
+        )
+        return val is True
 
     def _read_live_efficiency(self):
         """Lit (degats, assist) propres via personalEfficiencyCtrl. Tolerant :
@@ -764,39 +770,43 @@ class CompanionBridge(object):
         _probe("own player.position", lambda: tuple(p.position))
         _probe("own entity.position",
                lambda: tuple(__import__("BigWorld").entity(p.playerVehicleID).position))
-        # 2) Feed de positions facon minimap (dict vehicleID -> position).
-        def _positions_dict():
+        # 2) Positions via les ENTITES repliquees au client (source retenue).
+        #    Fair Play : un ennemi non spotte n'est PAS replique (BigWorld.entity
+        #    echoue) ; on gate en plus sur isSpotted.
+        try:
             import BigWorld
-            src = _first(
-                lambda: arena.positions,
-                lambda: p.arena.positions,
-                lambda: BigWorld.player().arena.positions,
-            )
-            return src
-        try:
-            pos = _positions_dict()
-            if pos:
-                items = list(pos.items())
-                _discovery_log("  OK   arena.positions : %d entrees" % len(items))
-                team_by_vid = {}
-                for vid, team, klass, alive in _iter_arena_vehicles(arena):
-                    team_by_vid[vid] = team
-                for vid, xz in items[:6]:
-                    _discovery_log("    pos vid=%r team=%r xz=%r"
-                                   % (vid, team_by_vid.get(vid), tuple(xz) if xz is not None else None))
-            else:
-                _discovery_log("  FAIL arena.positions : introuvable/vide")
+            allies = enemies_spotted = enemies_present = no_pos = 0
+            sample_enemy_attrs = None
+            for vid, team, klass, alive in _iter_arena_vehicles(arena):
+                if not alive or vid == p.playerVehicleID:
+                    continue
+                ent = _first(lambda: BigWorld.entity(vid))
+                if ent is None:
+                    continue
+                xz = _xz(_first(lambda: ent.position))
+                if xz is None:
+                    no_pos += 1
+                    continue
+                if team == self.my_team:
+                    allies += 1
+                else:
+                    enemies_present += 1
+                    spotted = _first(lambda: bool(ent.isSpotted),
+                                     lambda: bool(ent.appearance.isVisible))
+                    if spotted is True:
+                        enemies_spotted += 1
+                    if sample_enemy_attrs is None:
+                        sample_enemy_attrs = (
+                            _first(lambda: ent.isSpotted),
+                            _first(lambda: ent.__class__.__name__),
+                        )
+            _discovery_log("  ENTITES : allies_pos=%d ennemis_presents=%d "
+                           "ennemis_spottes=%d sans_position=%d"
+                           % (allies, enemies_present, enemies_spotted, no_pos))
+            _discovery_log("  ennemi echantillon (isSpotted, classe) = %r"
+                           % (sample_enemy_attrs,))
         except Exception as exc:
-            _discovery_log("  FAIL arena.positions : %s" % exc)
-        # 3) Piste alternative : controleur minimap / vehicles info du sessionProvider.
-        try:
-            sp = _resolve_session_provider()
-            _probe("sessionProvider.shared.feedback",
-                   lambda: sp.shared.feedback is not None)
-            _probe("sessionProvider arenaDP getVehiclesInfoIterator",
-                   lambda: hasattr(sp.getArenaDP(), "getVehiclesInfoIterator"))
-        except Exception as exc:
-            _discovery_log("  FAIL sessionProvider positions : %s" % exc)
+            _discovery_log("  FAIL positions via entites : %s" % exc)
 
 
 # --- Point d'entree du mod ---------------------------------------------------
