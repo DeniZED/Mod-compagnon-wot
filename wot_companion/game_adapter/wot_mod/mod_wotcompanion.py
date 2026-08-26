@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b12"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b13"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -553,15 +553,23 @@ class CompanionBridge(object):
                 _log("feedback event:\n" + traceback.format_exc())
 
     def _feedback_dump_once(self, e):
-        if self._fb_dumped >= 3:
+        """Sonde : logge les VALEURS reelles des premiers evenements (type, degats,
+        cible, role...) pour comprendre quel type porte les degats infliges."""
+        if self._fb_dumped >= 14:
             return
         self._fb_dumped += 1
         etype = _first(lambda: e.getBattleEventType(), lambda: e.getType())
         extra = _first(lambda: e.getExtra())
-        _log("FEEDBACK EVT type=%r attrs=%r"
-             % (etype, [a for a in dir(e) if not a.startswith("__")][:30]))
-        _log("FEEDBACK EXTRA=%r attrs=%r"
-             % (extra, [a for a in dir(extra) if not a.startswith("__")][:30] if extra else None))
+        cls = extra.__class__.__name__ if extra is not None else None
+        _log("FEEDBACK VAL type=%r extra=%s damage=%r rawdmg=%r crits=%r visible=%r target=%r role=%r count=%r"
+             % (etype, cls,
+                _first(lambda: e.getExtra().getDamage()),
+                _first(lambda: getattr(e.getExtra(), "_DamageExtra__damage")),
+                _first(lambda: e.getExtra().getCritsCount()),
+                _first(lambda: bool(e.getExtra().isVisible)),
+                _first(lambda: e.getTargetID()),
+                _first(lambda: e.getRole()),
+                _first(lambda: e.getCount())))
 
     def _accumulate_feedback(self, e):
         """Extrait degats/assist/spots d'un evenement feedback (best-effort) et
