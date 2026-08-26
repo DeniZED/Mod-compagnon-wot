@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b9"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b10"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -431,6 +431,10 @@ class CompanionBridge(object):
         self._player_vid = None        # id du vehicule du joueur dans l'arene
         self._pos_log_ctr = 0          # throttle du log de diagnostic positions
         self._vis_dumped = False        # dump unique du format getVisibleVehicles
+        self._fb_damage = 0             # cumul degats infliges (feedback)
+        self._fb_assist = 0             # cumul assist (feedback)
+        self._fb_dumped = 0             # nb d'evenements feedback deja detailles
+        self._feedback_hooked = False   # hook feedback pose une fois par bataille
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -455,6 +459,10 @@ class CompanionBridge(object):
         self._dead_sent = False
         self._max_hp = None
         self._vis_dumped = False
+        self._fb_damage = 0            # cumul degats infliges (feedback)
+        self._fb_assist = 0            # cumul assist (feedback), si dispo
+        self._fb_dumped = 0            # nb d'evenements feedback deja detailles
+        self._feedback_hooked = False  # hook feedback pose une fois par bataille
         self._player_vid = _first(lambda: p.playerVehicleID)
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
@@ -512,6 +520,71 @@ class CompanionBridge(object):
                 _discovery_log("STATS: hook onBattleResultsReceived OK")
         except Exception:
             _discovery_log("STATS hook resultats:\n" + traceback.format_exc())
+
+        # Degats/assist EN DIRECT via le controleur feedback (Fair Play : ta propre
+        # contribution, deja affichee a l'ecran). Remplace getTotalEfficiency=0.
+        try:
+            sp = _resolve_session_provider()
+            fb = _first(lambda: sp.shared.feedback)
+            if fb is not None and hasattr(fb, "onPlayerFeedbackReceived") \
+                    and not self._feedback_hooked:
+                fb.onPlayerFeedbackReceived += self._on_feedback
+                self._feedback_hooked = True   # une seule fois par bataille
+                _discovery_log("STATS: hook onPlayerFeedbackReceived OK")
+            elif fb is None:
+                _discovery_log("STATS: feedback.onPlayerFeedbackReceived indisponible")
+        except Exception:
+            _discovery_log("STATS hook feedback:\n" + traceback.format_exc())
+
+    def _on_feedback(self, events):
+        """Callback feedback (thread principal) : accumule degats/assist et envoie.
+        Sonde : detaille les premiers evenements pour verrouiller le format."""
+        try:
+            seq = events if isinstance(events, (list, tuple)) else [events]
+        except Exception:
+            seq = [events]
+        for e in seq:
+            try:
+                self._feedback_dump_once(e)
+                self._accumulate_feedback(e)
+            except Exception:
+                _log("feedback event:\n" + traceback.format_exc())
+
+    def _feedback_dump_once(self, e):
+        if self._fb_dumped >= 3:
+            return
+        self._fb_dumped += 1
+        etype = _first(lambda: e.getBattleEventType(), lambda: e.getType())
+        extra = _first(lambda: e.getExtra())
+        _log("FEEDBACK EVT type=%r attrs=%r"
+             % (etype, [a for a in dir(e) if not a.startswith("__")][:30]))
+        _log("FEEDBACK EXTRA=%r attrs=%r"
+             % (extra, [a for a in dir(extra) if not a.startswith("__")][:30] if extra else None))
+
+    def _accumulate_feedback(self, e):
+        """Extrait degats/assist d'un evenement feedback (best-effort, multi-API)
+        et envoie le cumul. Silencieux si rien d'exploitable."""
+        extra = _first(lambda: e.getExtra())
+        if extra is None:
+            return
+        dmg = _first(lambda: extra.getDamage(), lambda: extra.damage)
+        assist = _first(
+            lambda: extra.getAssist(),
+            lambda: (extra.getRadioAssist() or 0) + (extra.getTrackAssist() or 0),
+        )
+        changed = False
+        if isinstance(dmg, (int, float)) and dmg > 0:
+            self._fb_damage += int(dmg)
+            changed = True
+        if isinstance(assist, (int, float)) and assist > 0:
+            self._fb_assist += int(assist)
+            changed = True
+        if changed and self.battle_id is not None:
+            self.sender.send("PLAYER_DAMAGE_DEALT",
+                             {"total_damage": self._fb_damage}, self.battle_id)
+            if self._fb_assist > 0:
+                self.sender.send("PLAYER_ASSIST",
+                                 {"total_assist": self._fb_assist}, self.battle_id)
 
     def _on_results(self, *args):
         """Resultats de bataille -> envoie degats/assist reels + resultat."""
