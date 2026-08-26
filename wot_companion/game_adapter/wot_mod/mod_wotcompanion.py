@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b13"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b14"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -362,6 +362,17 @@ def _get_health(p):
     return hp, max_hp
 
 
+def _as_int(v):
+    """Convertit une valeur numerique en int (gere le `long` de Python 2, ex 690L).
+    Retourne None si non convertible. Evite le piege isinstance(int,float)."""
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _xz(pos):
     """Normalise une position WoT en [x, z] (plan horizontal), entiers (metres).
     Tolerant : Vector3 (.x/.y/.z), Vector2 (.x/.y), ou sequence indexable."""
@@ -555,7 +566,7 @@ class CompanionBridge(object):
     def _feedback_dump_once(self, e):
         """Sonde : logge les VALEURS reelles des premiers evenements (type, degats,
         cible, role...) pour comprendre quel type porte les degats infliges."""
-        if self._fb_dumped >= 14:
+        if self._fb_dumped >= 3:
             return
         self._fb_dumped += 1
         etype = _first(lambda: e.getBattleEventType(), lambda: e.getType())
@@ -584,17 +595,19 @@ class CompanionBridge(object):
         # Spot : l'ennemi devient visible grace au joueur.
         if _first(lambda: bool(extra.isVisible)) is True:
             self._fb_spots += 1
-        dmg = _first(lambda: extra.getDamage(), lambda: extra.damage)
-        assist = _first(
+        # ATTENTION : cote client Python 2, getDamage() renvoie un `long` (ex 690L),
+        # pas un int -> on convertit via _as_int (isinstance(int,float) ratait tout).
+        dmg = _as_int(_first(lambda: extra.getDamage(), lambda: extra.damage))
+        assist = _as_int(_first(
             lambda: extra.getAssist(),
             lambda: (extra.getRadioAssist() or 0) + (extra.getTrackAssist() or 0),
-        )
+        ))
         changed = False
-        if isinstance(dmg, (int, float)) and dmg > 0:
-            self._fb_damage += int(dmg)
+        if dmg and dmg > 0:
+            self._fb_damage += dmg
             changed = True
-        if isinstance(assist, (int, float)) and assist > 0:
-            self._fb_assist += int(assist)
+        if assist and assist > 0:
+            self._fb_assist += assist
             changed = True
         if changed and self.battle_id is not None:
             self.sender.send("PLAYER_DAMAGE_DEALT",
