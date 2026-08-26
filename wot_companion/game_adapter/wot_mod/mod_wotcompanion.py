@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b7"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b8"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -454,6 +454,7 @@ class CompanionBridge(object):
         self._start_time = time.time()
         self._dead_sent = False
         self._max_hp = None
+        self._enemy_dumped = False
         self._player_vid = _first(lambda: p.playerVehicleID)
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
@@ -687,7 +688,7 @@ class CompanionBridge(object):
                 allies.append(xz)
             else:
                 enemies_present += 1
-                self._dump_enemy_once(ent)   # diagnostic : trouver le bon drapeau
+                self._dump_enemy_once(ent, vid)   # diagnostic : trouver le bon drapeau
                 if self._enemy_is_spotted(ent):
                     enemies_spotted.append(xz)
 
@@ -705,18 +706,28 @@ class CompanionBridge(object):
             "own": own, "allies": allies, "enemies_spotted": enemies_spotted,
         }, self.battle_id)
 
-    def _dump_enemy_once(self, ent):
-        """Log unique des attributs "spotted/visible" d'une VRAIE entite ennemie
-        (mi-bataille), pour verrouiller le bon drapeau Fair Play."""
+    def _dump_enemy_once(self, ent, vid):
+        """Log unique et DETAILLE d'une VRAIE entite ennemie (mi-bataille) et des
+        controleurs, pour trouver avec CERTITUDE le drapeau "actuellement spotte"
+        (indispensable au respect Fair Play)."""
         if getattr(self, "_enemy_dumped", False):
             return
         self._enemy_dumped = True
         try:
-            names = [a for a in dir(ent)
-                     if any(k in a.lower() for k in ("spot", "visib", "observ", "detect"))]
-            _log("ENEMY DUMP classe=%s isSpotted=%r attrs=%r"
-                 % (ent.__class__.__name__,
-                    _first(lambda: ent.isSpotted), names[:20]))
+            names = [a for a in dir(ent) if not a.startswith("__")]
+            _log("ENEMY DUMP vid=%s classe=%s" % (vid, ent.__class__.__name__))
+            _log("ENEMY ATTRS=%r" % (names,))
+            _log("ENEMY isSpotted=%r publicInfo=%r"
+                 % (_first(lambda: ent.isSpotted),
+                    _first(lambda: dict(ent.publicInfo))))
+            sp = _resolve_session_provider()
+            fb = _first(lambda: sp.shared.feedback)
+            _log("FEEDBACK methods=%r"
+                 % ([a for a in dir(fb) if not a.startswith("__")] if fb else None))
+            dp = _first(lambda: sp.getArenaDP())
+            vo = _first(lambda: dp.getVehicleInfo(vid))
+            _log("ARENADP vo attrs=%r"
+                 % ([a for a in dir(vo) if not a.startswith("__")] if vo else None))
         except Exception:
             _log("ENEMY DUMP:\n" + traceback.format_exc())
 
