@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b11"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b12"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -433,6 +433,7 @@ class CompanionBridge(object):
         self._vis_dumped = False        # dump unique du format getVisibleVehicles
         self._fb_damage = 0             # cumul degats infliges (feedback)
         self._fb_assist = 0             # cumul assist (feedback)
+        self._fb_spots = 0              # nb de spots (visibilite)
         self._fb_dumped = 0             # nb d'evenements feedback deja detailles
         self._feedback_hooked = False   # hook feedback pose une fois par bataille
 
@@ -461,6 +462,7 @@ class CompanionBridge(object):
         self._vis_dumped = False
         self._fb_damage = 0            # cumul degats infliges (feedback)
         self._fb_assist = 0            # cumul assist (feedback), si dispo
+        self._fb_spots = 0             # nb de spots (visibilite)
         self._fb_dumped = 0            # nb d'evenements feedback deja detailles
         self._feedback_hooked = False  # hook feedback pose une fois par bataille
         self._player_vid = _first(lambda: p.playerVehicleID)
@@ -562,11 +564,18 @@ class CompanionBridge(object):
              % (extra, [a for a in dir(extra) if not a.startswith("__")][:30] if extra else None))
 
     def _accumulate_feedback(self, e):
-        """Extrait degats/assist d'un evenement feedback (best-effort, multi-API)
-        et envoie le cumul. Silencieux si rien d'exploitable."""
+        """Extrait degats/assist/spots d'un evenement feedback (best-effort) et
+        envoie le cumul. Silencieux si rien d'exploitable.
+
+        Format constate (journal b10) : type 7 = _DamageExtra.getDamage() = degats
+        infliges ; type 0 = _VisibilityExtra (spot). L'assist chiffre n'est pas
+        fourni cote client (calcule serveur) -> on compte les spots a la place."""
         extra = _first(lambda: e.getExtra())
         if extra is None:
             return
+        # Spot : l'ennemi devient visible grace au joueur.
+        if _first(lambda: bool(extra.isVisible)) is True:
+            self._fb_spots += 1
         dmg = _first(lambda: extra.getDamage(), lambda: extra.damage)
         assist = _first(
             lambda: extra.getAssist(),
@@ -771,6 +780,10 @@ class CompanionBridge(object):
             _log("POSITIONS: own=%s allies=%d ennemis_presents=%d ennemis_spottes=%d"
                  % ("oui" if own else "non", len(allies), enemies_present,
                     len(enemies_spotted)))
+            # Contribution en direct (feedback) : visible dans le python.log seul,
+            # pour verifier les degats sans lancer le compagnon.
+            _log("CONTRIB: degats=%d assist=%d spots=%d"
+                 % (self._fb_damage, self._fb_assist, self._fb_spots))
         # Diagnostic unique : format brut de getVisibleVehicles, si un ennemi est
         # present mais aucun retenu (permet d'ajuster le parsing si besoin).
         if enemies_present and not enemies_spotted and not getattr(self, "_vis_dumped", False):
