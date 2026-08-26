@@ -53,6 +53,7 @@ class AdviceEngine:
         self.rules = self._load_rules(rules or default_rules())
 
         self.context: BattleContext | None = None
+        self.last_features = None
         self.features_builder = FeatureBuilder()
         self._fired_once: set[str] = set()
         self.player_profile: dict | None = None
@@ -120,6 +121,7 @@ class AdviceEngine:
                 logger.exception("notify_state overlay a echoue")
 
         features = self.features_builder.build(self.context)
+        self.last_features = features   # expose pour la trace tactique (V2)
         self.arbiter.set_clock(self.context.elapsed_s)
 
         rc = RuleContext(

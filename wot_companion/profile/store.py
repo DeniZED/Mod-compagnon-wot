@@ -14,9 +14,28 @@ from typing import Any
 from .. import APP_VERSION
 from ..core.context.battle_context import BattleContext
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 EARLY_HP_LOSS_WINDOW_S = 180.0  # 3 min
+
+# Migration v2 : trace tactique legere (Moteur V2, §34). Une ligne par instant
+# echantillonne d'une bataille -> base pour PositionCluster / coach personnel.
+_MIGRATION_V2 = """
+CREATE TABLE IF NOT EXISTS battle_states (
+    battle_id     TEXT,
+    t_s           REAL,      -- temps de bataille (s)
+    x             REAL,      -- position propre (plan horizontal)
+    z             REAL,
+    hp_ratio      REAL,
+    damage        REAL,
+    assist        REAL,
+    allies_near   INTEGER,
+    enemies_near  INTEGER,   -- ennemis SPOTTES proches (Fair Play)
+    phase         TEXT,
+    FOREIGN KEY (battle_id) REFERENCES battles(id)
+);
+CREATE INDEX IF NOT EXISTS idx_states_battle ON battle_states(battle_id);
+"""
 
 
 @dataclass
@@ -37,6 +56,20 @@ class BattleRecord:
     ended_ms: int | None = None
 
 
+@dataclass
+class BattleState:
+    """Instant echantillonne d'une bataille (trace tactique legere, V2 §34)."""
+    t_s: float
+    x: float | None
+    z: float | None
+    hp_ratio: float | None
+    damage: float = 0.0
+    assist: float = 0.0
+    allies_near: int = 0
+    enemies_near: int = 0
+    phase: str | None = None
+
+
 class HistoryStore:
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self.db_path = str(db_path)
@@ -53,10 +86,14 @@ class HistoryStore:
         version = cur.execute("PRAGMA user_version").fetchone()[0]
         if version < 1:
             cur.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
-            cur.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            self.conn.commit()
-        # Les migrations futures (version 2, 3...) s'ajouteront ici de maniere
-        # incrementale et seront couvertes par des tests.
+            version = 1
+        if version < 2:
+            cur.executescript(_MIGRATION_V2)
+            version = 2
+        cur.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self.conn.commit()
+        # Les migrations futures (version 3...) s'ajoutent ici, incrementales et
+        # couvertes par des tests.
 
     # ---- Ecriture ----------------------------------------------------------
     def record_from_context(self, ctx: BattleContext) -> BattleRecord:
@@ -106,6 +143,38 @@ class HistoryStore:
                 " VALUES (?,?,?,?)",
                 (battle_id, code, value, timestamp_ms or int(time.time() * 1000)),
             )
+
+    # ---- Trace tactique legere (V2, §34) -----------------------------------
+    def record_state(self, battle_id: str, state: "BattleState") -> None:
+        """Enregistre un instant echantillonne d'une bataille."""
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO battle_states
+                   (battle_id, t_s, x, z, hp_ratio, damage, assist,
+                    allies_near, enemies_near, phase)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (battle_id, state.t_s, state.x, state.z, state.hp_ratio,
+                 state.damage, state.assist, state.allies_near,
+                 state.enemies_near, state.phase),
+            )
+
+    def battle_states(self, battle_id: str) -> list["BattleState"]:
+        rows = self.conn.execute(
+            "SELECT * FROM battle_states WHERE battle_id = ? ORDER BY t_s",
+            (battle_id,),
+        ).fetchall()
+        return [BattleState(
+            t_s=r["t_s"], x=r["x"], z=r["z"], hp_ratio=r["hp_ratio"],
+            damage=r["damage"], assist=r["assist"], allies_near=r["allies_near"],
+            enemies_near=r["enemies_near"], phase=r["phase"],
+        ) for r in rows]
+
+    def count_states(self, battle_id: str | None = None) -> int:
+        if battle_id:
+            return self.conn.execute(
+                "SELECT COUNT(*) FROM battle_states WHERE battle_id = ?",
+                (battle_id,)).fetchone()[0]
+        return self.conn.execute("SELECT COUNT(*) FROM battle_states").fetchone()[0]
 
     # ---- Lecture -----------------------------------------------------------
     def recent_battles(self, limit: int = 20, vehicle_id: str | None = None

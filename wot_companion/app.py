@@ -13,6 +13,7 @@ from .core.events import EventType, RawEvent
 from .game_adapter.base import GameAdapter
 from .knowledge.loader import KnowledgeBase
 from .profile.store import HistoryStore
+from .profile.trace import BattleTraceRecorder
 from .profile.trends import TrendAnalyzer, build_player_profile
 from .settings import Personality, Settings
 
@@ -35,6 +36,7 @@ class CompanionApp:
             settings=self.settings, knowledge=self.knowledge, overlay=overlay
         )
         self.trends = TrendAnalyzer(self.store)
+        self.trace = BattleTraceRecorder(self.store)
         self._silenced = False
         self._prev_personality = self.settings.personality
 
@@ -93,6 +95,10 @@ class CompanionApp:
             return
 
         self.engine.feed(event)
+        # Trace tactique legere : echantillonne l'etat pour bâtir, au fil des
+        # batailles, les positions/routes efficaces du joueur (V2, local-first).
+        if self.engine.context is not None:
+            self.trace.maybe_record(self.engine.context, self.engine.last_features)
 
     def _on_battle_end(self, event: RawEvent) -> None:
         self.engine.on_event(event)
