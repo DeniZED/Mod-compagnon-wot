@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b3"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b4"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -171,26 +171,37 @@ _log("=== Module importe (build %s). Journal: %s ===" % (BUILD_TAG, _LOG_FILE))
 
 
 # --- Client socket non bloquant ---------------------------------------------
+# REGLE ABSOLUE : le thread PRINCIPAL du jeu ne doit JAMAIS faire d'I/O reseau.
+# send() (appele depuis les callbacks BigWorld = thread principal) se contente
+# d'empiler l'evenement (O(1), sans blocage). Un thread de fond gere connexion et
+# envoi avec un timeout court. Si le compagnon n'est pas lance, les evenements
+# sont simplement jetes : le jeu n'est jamais ralenti (0 fps corrige).
+_CONNECT_TIMEOUT_S = 0.3     # tentative de connexion tres courte (localhost)
+_CONNECT_RETRY_S = 3.0       # on ne retente pas la connexion a chaque evenement
+_QUEUE_MAX = 500             # file bornee : on jette le plus ancien si pleine
+
+
 class _Sender(object):
     def __init__(self, host, port):
         self.host = host
         self.port = port
         self._sock = None
-        self._lock = threading.Lock()
-
-    def ensure_connected(self):
-        if self._sock is not None:
-            return True
+        self._stop = False
+        self._last_attempt = 0.0
         try:
-            import socket  # import differe (voir en-tete)
-            self._sock = socket.create_connection((self.host, self.port), timeout=2.0)
-            _log("Connecte au compagnon %s:%d" % (self.host, self.port))
-            return True
+            import Queue as _q      # Python 2
+        except ImportError:
+            import queue as _q      # Python 3
+        self._queue = _q.Queue(maxsize=_QUEUE_MAX)
+        self._thread = threading.Thread(target=self._run)
+        self._thread.daemon = True   # meurt avec le jeu, ne le maintient pas en vie
+        try:
+            self._thread.start()
         except Exception:
-            self._sock = None
-            return False
+            _log("thread d'envoi non demarre:\n" + traceback.format_exc())
 
     def send(self, event_type, payload=None, battle_id=None):
+        """APPELE SUR LE THREAD PRINCIPAL : empile seulement, aucune I/O ici."""
         env = {
             "schema_version": SCHEMA_VERSION,
             "timestamp_ms": int(time.time() * 1000),
@@ -199,18 +210,56 @@ class _Sender(object):
             "payload": payload or {},
             "fairplay_class": "ALLOW",
         }
-        line = (json.dumps(env) + "\n").encode("utf-8")
-        with self._lock:
-            if not self.ensure_connected():
-                return False
+        try:
+            line = (json.dumps(env) + "\n").encode("utf-8")
+        except Exception:
+            return False
+        try:
+            self._queue.put_nowait(line)
+        except Exception:
+            # File pleine (compagnon absent) : on jette le plus ancien et on
+            # empile le nouveau. Jamais de blocage du thread de jeu.
+            try:
+                self._queue.get_nowait()
+                self._queue.put_nowait(line)
+            except Exception:
+                pass
+        return True
+
+    def _run(self):
+        """Thread de fond : draine la file et envoie. Toute l'I/O est ici."""
+        while not self._stop:
+            try:
+                line = self._queue.get(timeout=0.5)
+            except Exception:
+                continue
+            if line is None:      # signal d'arret
+                break
+            if not self._ensure_connected():
+                continue          # compagnon absent : on jette silencieusement
             try:
                 self._sock.sendall(line)
-                return True
             except Exception:
-                self._close_locked()
-                return False
+                self._close_sock()
 
-    def _close_locked(self):
+    def _ensure_connected(self):
+        if self._sock is not None:
+            return True
+        now = time.time()
+        if now - self._last_attempt < _CONNECT_RETRY_S:
+            return False          # throttle : pas de tentative a chaque evenement
+        self._last_attempt = now
+        try:
+            import socket          # import differe (voir en-tete)
+            self._sock = socket.create_connection(
+                (self.host, self.port), timeout=_CONNECT_TIMEOUT_S)
+            _log("Connecte au compagnon %s:%d" % (self.host, self.port))
+            return True
+        except Exception:
+            self._sock = None
+            return False
+
+    def _close_sock(self):
         if self._sock is not None:
             try:
                 self._sock.close()
@@ -219,8 +268,12 @@ class _Sender(object):
             self._sock = None
 
     def close(self):
-        with self._lock:
-            self._close_locked()
+        self._stop = True
+        try:
+            self._queue.put_nowait(None)   # reveille le thread pour qu'il sorte
+        except Exception:
+            pass
+        self._close_sock()
 
 
 # --- Normalisation -----------------------------------------------------------
