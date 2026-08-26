@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b8"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b9"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -430,7 +430,7 @@ class CompanionBridge(object):
         self._dead_sent = False        # HP=0 deja envoye pour cette bataille
         self._player_vid = None        # id du vehicule du joueur dans l'arene
         self._pos_log_ctr = 0          # throttle du log de diagnostic positions
-        self._enemy_dumped = False      # dump unique des attributs d'une entite ennemie
+        self._vis_dumped = False        # dump unique du format getVisibleVehicles
 
     def on_avatar_ready(self):
         _log("Evenement: avatar pret (debut de bataille).")
@@ -454,7 +454,7 @@ class CompanionBridge(object):
         self._start_time = time.time()
         self._dead_sent = False
         self._max_hp = None
-        self._enemy_dumped = False
+        self._vis_dumped = False
         self._player_vid = _first(lambda: p.playerVehicleID)
 
         self.sender.send("BATTLE_START", {"battle_id": self.battle_id}, self.battle_id)
@@ -661,17 +661,17 @@ class CompanionBridge(object):
     def _send_positions(self, p, arena):
         """Envoie POSITIONS a partir des entites repliquees au client.
 
-        FAIR PLAY : le serveur ne replique au client QUE les vehicules qu'il a le
-        droit de voir — son char, ses allies a portee, et les ennemis DEJA
-        SPOTTES. Un ennemi non spotte n'existe pas cote client (BigWorld.entity
-        echoue). En plus, on n'inclut un ennemi que si son drapeau `isSpotted`
-        est vrai. Aucune lecture de position d'ennemi non spotte."""
+        FAIR PLAY : un ennemi n'est inclus QUE s'il est actuellement visible pour
+        le joueur, d'apres la liste que le jeu calcule lui-meme
+        (feedback.getVisibleVehicles), avec repli sur le drapeau d'entite
+        `isHidden`. Aucune lecture de position d'ennemi non spotte."""
         import BigWorld
 
         own = _first(
             lambda: _xz(p.getOwnVehiclePosition()),
             lambda: _xz(p.position),
         )
+        visible_ids = self._visible_vehicle_ids()   # liste "vu par le joueur" du jeu
         allies = []
         enemies_spotted = []
         enemies_present = 0
@@ -688,8 +688,7 @@ class CompanionBridge(object):
                 allies.append(xz)
             else:
                 enemies_present += 1
-                self._dump_enemy_once(ent, vid)   # diagnostic : trouver le bon drapeau
-                if self._enemy_is_spotted(ent):
+                if self._enemy_is_spotted(ent, vid, visible_ids):
                     enemies_spotted.append(xz)
 
         # Diagnostic throttle (~toutes les 15 poll = 30 s) : visible dans le log
@@ -699,6 +698,12 @@ class CompanionBridge(object):
             _log("POSITIONS: own=%s allies=%d ennemis_presents=%d ennemis_spottes=%d"
                  % ("oui" if own else "non", len(allies), enemies_present,
                     len(enemies_spotted)))
+        # Diagnostic unique : format brut de getVisibleVehicles, si un ennemi est
+        # present mais aucun retenu (permet d'ajuster le parsing si besoin).
+        if enemies_present and not enemies_spotted and not getattr(self, "_vis_dumped", False):
+            self._vis_dumped = True
+            _log("VISIBLE dump: type=%s sample=%r"
+                 % (type(visible_ids).__name__, list(visible_ids)[:6] if visible_ids else visible_ids))
 
         if own is None and not allies and not enemies_spotted:
             return
@@ -706,40 +711,38 @@ class CompanionBridge(object):
             "own": own, "allies": allies, "enemies_spotted": enemies_spotted,
         }, self.battle_id)
 
-    def _dump_enemy_once(self, ent, vid):
-        """Log unique et DETAILLE d'une VRAIE entite ennemie (mi-bataille) et des
-        controleurs, pour trouver avec CERTITUDE le drapeau "actuellement spotte"
-        (indispensable au respect Fair Play)."""
-        if getattr(self, "_enemy_dumped", False):
-            return
-        self._enemy_dumped = True
+    @staticmethod
+    def _visible_vehicle_ids():
+        """Ensemble des vehicules ACTUELLEMENT visibles pour le joueur, tel que le
+        jeu lui-meme le calcule (controleur feedback). C'est la reference Fair
+        Play : exactement ce que le joueur voit. Retourne None si indisponible."""
+        sp = _resolve_session_provider()
+        fb = _first(lambda: sp.shared.feedback)
+        if fb is None:
+            return None
+        vv = _first(lambda: fb.getVisibleVehicles())
+        if vv is None:
+            return None
+        ids = set()
         try:
-            names = [a for a in dir(ent) if not a.startswith("__")]
-            _log("ENEMY DUMP vid=%s classe=%s" % (vid, ent.__class__.__name__))
-            _log("ENEMY ATTRS=%r" % (names,))
-            _log("ENEMY isSpotted=%r publicInfo=%r"
-                 % (_first(lambda: ent.isSpotted),
-                    _first(lambda: dict(ent.publicInfo))))
-            sp = _resolve_session_provider()
-            fb = _first(lambda: sp.shared.feedback)
-            _log("FEEDBACK methods=%r"
-                 % ([a for a in dir(fb) if not a.startswith("__")] if fb else None))
-            dp = _first(lambda: sp.getArenaDP())
-            vo = _first(lambda: dp.getVehicleInfo(vid))
-            _log("ARENADP vo attrs=%r"
-                 % ([a for a in dir(vo) if not a.startswith("__")] if vo else None))
+            for item in vv:
+                vid = _first(lambda: item[0], lambda: item.vehicleID,
+                             lambda: int(item))
+                if vid is not None:
+                    ids.add(vid)
         except Exception:
-            _log("ENEMY DUMP:\n" + traceback.format_exc())
+            return None
+        return ids
 
     @staticmethod
-    def _enemy_is_spotted(ent):
-        """Vrai uniquement si l'ennemi est explicitement spotte (visible au
-        joueur). En l'absence de drapeau fiable, on EXCLUT (defaut sûr)."""
-        val = _first(
-            lambda: bool(ent.isSpotted),
-            lambda: bool(ent.appearance.isVisible),
-        )
-        return val is True
+    def _enemy_is_spotted(ent, vid, visible_ids):
+        """Vrai uniquement si l'ennemi est ACTUELLEMENT visible au joueur.
+        Priorite a la liste du jeu (getVisibleVehicles) ; a defaut, drapeau
+        d'entite `isHidden` (masque = non spotte). Sans info fiable : EXCLU."""
+        if visible_ids is not None:
+            return vid in visible_ids
+        hidden = _first(lambda: bool(ent.isHidden))
+        return hidden is False   # explicitement non masque = visible
 
     def _read_live_efficiency(self):
         """Lit (degats, assist) propres via personalEfficiencyCtrl. Tolerant :
@@ -802,41 +805,29 @@ class CompanionBridge(object):
         _probe("own player.position", lambda: tuple(p.position))
         _probe("own entity.position",
                lambda: tuple(__import__("BigWorld").entity(p.playerVehicleID).position))
-        # 2) Positions via les ENTITES repliquees au client (source retenue).
-        #    Fair Play : un ennemi non spotte n'est PAS replique (BigWorld.entity
-        #    echoue) ; on gate en plus sur isSpotted.
+        # 2) Positions via les ENTITES repliquees + liste "vu par le joueur" du jeu.
+        #    Fair Play : un ennemi n'est retenu que s'il est dans getVisibleVehicles
+        #    (ou, a defaut, non masque via isHidden).
         try:
-            import BigWorld
-            allies = enemies_spotted = enemies_present = no_pos = 0
-            sample_enemy_attrs = None
+            import BigWorld  # noqa: F401
+            visible_ids = self._visible_vehicle_ids()
+            allies = enemies_spotted = enemies_present = 0
             for vid, team, klass, alive in _iter_arena_vehicles(arena):
                 if not alive or vid == p.playerVehicleID:
                     continue
                 ent = _first(lambda: BigWorld.entity(vid))
-                if ent is None:
-                    continue
-                xz = _xz(_first(lambda: ent.position))
-                if xz is None:
-                    no_pos += 1
+                if ent is None or _xz(_first(lambda: ent.position)) is None:
                     continue
                 if team == self.my_team:
                     allies += 1
                 else:
                     enemies_present += 1
-                    spotted = _first(lambda: bool(ent.isSpotted),
-                                     lambda: bool(ent.appearance.isVisible))
-                    if spotted is True:
+                    if self._enemy_is_spotted(ent, vid, visible_ids):
                         enemies_spotted += 1
-                    if sample_enemy_attrs is None:
-                        sample_enemy_attrs = (
-                            _first(lambda: ent.isSpotted),
-                            _first(lambda: ent.__class__.__name__),
-                        )
-            _discovery_log("  ENTITES : allies_pos=%d ennemis_presents=%d "
-                           "ennemis_spottes=%d sans_position=%d"
-                           % (allies, enemies_present, enemies_spotted, no_pos))
-            _discovery_log("  ennemi echantillon (isSpotted, classe) = %r"
-                           % (sample_enemy_attrs,))
+            _discovery_log("  ENTITES : allies=%d ennemis_presents=%d "
+                           "ennemis_spottes=%d visibleAPI=%s"
+                           % (allies, enemies_present, enemies_spotted,
+                              "oui" if visible_ids is not None else "non"))
         except Exception as exc:
             _discovery_log("  FAIL positions via entites : %s" % exc)
 
