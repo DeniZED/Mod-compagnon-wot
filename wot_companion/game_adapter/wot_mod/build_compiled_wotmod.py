@@ -41,9 +41,19 @@ def compile_pyc(python_exe: str, out_pyc: Path) -> str:
         return fh.read(4).hex()
 
 
+def _build_tag() -> str:
+    """Lit BUILD_TAG dans la source pour nommer le paquet (ex. b11)."""
+    import re
+    src = _SRC.read_text(encoding="utf-8")
+    m = re.search(r'BUILD_TAG\s*=\s*"([^"]+)"', src)
+    return m.group(1) if m else "dev"
+
+
 def build(out_dir: Path, pyc: Path, pyver: str) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / f"{_MOD_ID}.py{pyver}_0.1.0.wotmod"
+    # Nom VERSIONNE : une seule version a garder, l'ancienne se supprime sans
+    # ambiguite. WoT charge n'importe quel *.wotmod du dossier.
+    target = out_dir / f"WoTCompanion_{_build_tag()}.wotmod"
     with zipfile.ZipFile(target, "w", zipfile.ZIP_STORED) as z:
         z.write(_HERE / "meta.xml", "meta.xml")
         z.write(pyc, _ARCNAME)

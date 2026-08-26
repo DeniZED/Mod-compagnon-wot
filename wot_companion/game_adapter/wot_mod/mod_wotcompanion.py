@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b10"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b11"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -918,6 +918,10 @@ def init():
     _inited = True
     try:
         _bridge = CompanionBridge()
+        _log("################################################")
+        _log("#  WoT Companion  -  VERSION %-6s            #" % BUILD_TAG)
+        _log("#  (garde UN seul .wotmod : supprime les vieux) #")
+        _log("################################################")
         _log("Mod charge (build %s). En attente d'une bataille." % BUILD_TAG)
         try:
             from PlayerEvents import g_playerEvents
