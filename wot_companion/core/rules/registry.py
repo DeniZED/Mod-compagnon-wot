@@ -5,6 +5,7 @@ from .base import Rule
 from .endgame import EndgameRule
 from .hp_management import HpManagementRule
 from .initial_plan import InitialPlanRule
+from .positioning import PositioningRule
 from .positive import PositiveReinforcementRule
 from .reaction import HitTakenReactionRule
 from .retreat import RetreatRule
@@ -23,4 +24,5 @@ def default_rules() -> list[Rule]:
         EndgameRule(),
         PositiveReinforcementRule(),
         HitTakenReactionRule(),
+        PositioningRule(),
     ]

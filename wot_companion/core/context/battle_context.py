@@ -18,6 +18,32 @@ class BattlePhase(str, Enum):
     LATE = "late"
 
 
+def _as_xz(v: Any) -> tuple[float, float] | None:
+    """Normalise une position en (x, z) plan horizontal. Tolerant : accepte
+    [x, z] ou [x, y, z] (WoT : y = altitude, ignoree)."""
+    try:
+        if v is None:
+            return None
+        if len(v) >= 3:
+            return (float(v[0]), float(v[2]))
+        if len(v) == 2:
+            return (float(v[0]), float(v[1]))
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _as_xz_list(v: Any) -> list[tuple[float, float]]:
+    if not isinstance(v, (list, tuple)):
+        return []
+    out = []
+    for item in v:
+        xz = _as_xz(item)
+        if xz is not None:
+            out.append(xz)
+    return out
+
+
 @dataclass
 class TeamComposition:
     """Indicateurs agreges de composition connus au chargement (BAT-004)."""
@@ -68,6 +94,10 @@ class BattleContext:
     # Degats subis (chute de HP) : pour les reactions "tir recu".
     last_damage_taken_s: float | None = None
     last_damage_taken_ratio: float = 0.0   # ampleur de la derniere chute (0..1)
+    # Positions du feed minimap (Fair Play) : soi, allies, ennemis DEJA spottes.
+    own_pos: tuple[float, float] | None = None
+    ally_positions: list[tuple[float, float]] = field(default_factory=list)
+    enemy_positions_spotted: list[tuple[float, float]] = field(default_factory=list)
 
     # Resultat
     result: str | None = None
@@ -104,6 +134,11 @@ class BattleContext:
             )
             self.allies_alive = self.composition.ally_count
             self.enemies_alive = self.composition.enemy_count
+        elif et == EventType.POSITIONS.value:
+            self.own_pos = _as_xz(p.get("own"))
+            self.ally_positions = _as_xz_list(p.get("allies"))
+            # SECURITE Fair Play : uniquement les ennemis deja spottes (feed minimap).
+            self.enemy_positions_spotted = _as_xz_list(p.get("enemies_spotted"))
         elif et == EventType.PLAYER_HP_CHANGED.value:
             new_ratio = None
             if "hp_ratio" in p:

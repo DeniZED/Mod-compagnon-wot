@@ -104,6 +104,24 @@
       "detendu": "La ca chauffe ({hp_pct}%), replie-toi vite.",
       "silencieux": "Decroche."
     },
+    "pos_local_threat": {
+      "coach": "Sous-nombre local : {enemies} ennemis spottes proches pour {allies} allie(s). Temporise ou replie, ne te fais pas focus.",
+      "commandant": "{enemies} ennemis proches, {allies} allie(s). Replie.",
+      "detendu": "Y'a {enemies} ennemis spottes sur toi et {allies} pote(s) : temporise.",
+      "silencieux": "Sous-nombre local : replie."
+    },
+    "pos_overextended": {
+      "coach": "Tu es nettement devant ton equipe : temporise et laisse tes alliees te rejoindre avant de pousser.",
+      "commandant": "Trop avance. Temporise, attends l'equipe.",
+      "detendu": "T'es un peu loin devant la : attends les potes.",
+      "silencieux": "Trop avance : temporise."
+    },
+    "pos_isolated": {
+      "coach": "Aucun allie proche pour te soutenir (le plus proche a {nearest_ally_m} m) : regroupe-toi vers l'equipe.",
+      "commandant": "Isole. Regroupe-toi.",
+      "detendu": "T'es tout seul dans ton coin : rejoins les potes.",
+      "silencieux": "Isole : regroupe."
+    },
     "positive_healthy": {
       "coach": "Beau jeu : tu es encore a {hp_pct}% de HP a ce stade. Continue de choisir tes echanges, ca paie.",
       "commandant": "HP sains ({hp_pct}%). Bien joue, continue.",

@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b4"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b5"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -362,6 +362,26 @@ def _get_health(p):
     return hp, max_hp
 
 
+def _xz(pos):
+    """Normalise une position WoT en [x, z] (plan horizontal), entiers (metres).
+    Tolerant : Vector3 (.x/.y/.z), Vector2 (.x/.y), ou sequence indexable."""
+    if pos is None:
+        return None
+    try:
+        if hasattr(pos, "z") and hasattr(pos, "x"):
+            return [int(round(pos.x)), int(round(pos.z))]
+        if hasattr(pos, "y") and hasattr(pos, "x"):     # Vector2 : (x, y) = plan
+            return [int(round(pos.x)), int(round(pos.y))]
+        n = len(pos)
+        if n >= 3:
+            return [int(round(pos[0])), int(round(pos[2]))]
+        if n == 2:
+            return [int(round(pos[0])), int(round(pos[1]))]
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
 def _iter_arena_vehicles(arena):
     out = []
     vehicles = _first(lambda: arena.vehicles)
@@ -628,6 +648,60 @@ class CompanionBridge(object):
             self.sender.send("PLAYER_DAMAGE_DEALT", {"total_damage": dmg}, self.battle_id)
         if assist is not None:
             self.sender.send("PLAYER_ASSIST", {"total_assist": assist}, self.battle_id)
+
+        # Positions du feed minimap (Fair Play) : soi, allies, ennemis SPOTTES.
+        try:
+            self._send_positions(p, arena)
+        except Exception:
+            _log("positions:\n" + traceback.format_exc())
+
+    def _send_positions(self, p, arena):
+        """Envoie POSITIONS depuis le feed minimap. FAIR PLAY : les positions
+        ennemies proviennent EXCLUSIVEMENT du feed minimap (arena.positions), qui
+        ne contient que des ennemis DEJA SPOTTES — jamais une lecture d'entite
+        ennemie non spottee."""
+        import BigWorld  # noqa: F401
+        feed = _first(
+            lambda: arena.positions,
+            lambda: p.arena.positions,
+            lambda: BigWorld.player().arena.positions,
+        )
+        if not feed:
+            return
+        team_by_vid = {}
+        for vid, team, klass, is_alive in _iter_arena_vehicles(arena):
+            team_by_vid[vid] = team
+
+        own = None
+        allies = []
+        enemies_spotted = []
+        for vid, pos in feed.items():
+            xz = _xz(pos)
+            if xz is None:
+                continue
+            if vid == self._player_vid:
+                own = xz
+                continue
+            team = team_by_vid.get(vid)
+            if team is None:
+                continue
+            if team == self.my_team:
+                allies.append(xz)
+            else:
+                # Present dans le feed minimap => ennemi SPOTTE (visible au joueur).
+                enemies_spotted.append(xz)
+
+        # Position propre : accesseur dedie en priorite (plus fiable que le feed).
+        own = _first(
+            lambda: _xz(p.getOwnVehiclePosition()),
+            lambda: _xz(p.position),
+        ) or own
+
+        if own is None and not allies and not enemies_spotted:
+            return
+        self.sender.send("POSITIONS", {
+            "own": own, "allies": allies, "enemies_spotted": enemies_spotted,
+        }, self.battle_id)
 
     def _read_live_efficiency(self):
         """Lit (degats, assist) propres via personalEfficiencyCtrl. Tolerant :

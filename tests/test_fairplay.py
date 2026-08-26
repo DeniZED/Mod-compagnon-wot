@@ -33,6 +33,28 @@ def test_non_whitelisted_field_is_stripped_not_invented():
     assert any(v.kind == "forbidden_field" for v in res.violations)
 
 
+def test_positions_event_allows_only_spotted_enemy_field():
+    # Le feed minimap est autorise (soi/allies/ennemis spottes), mais un champ
+    # de position ennemie NON spottee injecte est retire (jamais consomme).
+    f = FairPlayFilter()
+    res = f.filter_event(RawEvent(EventType.POSITIONS.value, {
+        "own": [0, 0], "allies": [[10, 10]], "enemies_spotted": [[20, 20]],
+        "enemies_unspotted": [[99, 99]],  # champ interdit
+    }))
+    assert res.allowed
+    assert "enemies_spotted" in res.event.payload
+    assert "own" in res.event.payload
+    assert "enemies_unspotted" not in res.event.payload  # retire
+    assert any(v.kind == "forbidden_field" for v in res.violations)
+
+
+def test_unspotted_position_event_is_blocked():
+    # Un type d'evenement de position ennemie cachee reste interdit.
+    f = FairPlayFilter()
+    res = f.filter_event(RawEvent("ENEMY_UNSPOTTED_POSITION", {"pos": [1, 2]}))
+    assert not res.allowed
+
+
 def test_valid_rule_passes_validation():
     f = FairPlayFilter()
     violations = f.validate_rule("hp.preservation", ("PLAYER_HP_CHANGED.hp_ratio",))

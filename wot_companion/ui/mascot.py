@@ -61,6 +61,9 @@ def expression_for(category: str | None, severity: str | None,
     if cat == "REACTION":
         # Tir recu : inquiet si on doit fuir/se cacher, determine si on encaisse.
         return "worried" if (action or "") in ("BREAK_CONTACT", "BREAK_LOS") else "determined"
+    if cat == "POSITIONING":
+        # Placement : inquiet si menace/isolement, alerte sinon.
+        return "worried" if (action or "") in ("LOCAL_OUTNUMBERED", "REGROUP") else "alert"
     if cat == "HP" and (action or "") == "PLAY_SAFE":
         return "grumpy"
     if sev == "ATTENTION":

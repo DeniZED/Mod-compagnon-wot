@@ -35,6 +35,10 @@ class EventType(str, Enum):
     PLAYER_DAMAGE_DEALT = "PLAYER_DAMAGE_DEALT"
     PLAYER_ASSIST = "PLAYER_ASSIST"
     PLAYER_POSITION = "PLAYER_POSITION"     # position du joueur (secteur symbolique)
+    # Positions du feed minimap : SA position, celles de ses ALLIES, et celles des
+    # ennemis DEJA SPOTTES (exactement ce que la minimap montre au joueur). Aucune
+    # position d'ennemi non spotte (cf. ENEMY_UNSPOTTED_POSITION, interdit).
+    POSITIONS = "POSITIONS"
     ALLY_DESTROYED = "ALLY_DESTROYED"       # allie detruit (visible dans le tableau)
     ENEMY_DESTROYED = "ENEMY_DESTROYED"     # kill visible dans le tableau de bord
     TEAM_COUNT = "TEAM_COUNT"               # nombre de vehicules restants par camp

@@ -6,9 +6,15 @@ presentes et autorisees dans le contexte.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from .battle_context import BattleContext, BattlePhase
+
+# Rayons en metres (WoT). Portee de vue max ~445 m ; engagements courants 200-350 m.
+SUPPORT_RADIUS_M = 160.0     # un allie plus proche que ca peut te soutenir
+ISOLATION_DIST_M = 200.0     # au-dela, aucun allie proche = isole
+THREAT_RADIUS_M = 220.0      # ennemi spotte dans ce rayon = menace locale directe
 
 # Bornes de phase (section 7 BAT-007). Une bataille WoT dure ~15 min (900 s).
 EARLY_MAX_S = 150.0   # 2 min 30
@@ -34,6 +40,12 @@ class Features:
     contribution_total: float
     took_damage_recently: bool             # a subi des degats dans la fenetre recente
     damage_taken_ratio: float              # ampleur de la derniere chute (0..1)
+    # Spatial (feed minimap : soi + allies + ennemis spottes). None/0 si pas de data.
+    nearest_ally_dist: float | None        # distance a l'allie vivant le plus proche
+    allies_near: int                       # allies dans le rayon de soutien
+    enemies_spotted_near: int              # ennemis SPOTTES proches (menace locale)
+    isolated: bool                         # aucun allie a portee de soutien
+    overextended: bool                     # pousse devant le gros de l'equipe
 
 
 class FeatureBuilder:
@@ -96,6 +108,8 @@ class FeatureBuilder:
             and ctx.elapsed_s - ctx.last_damage_taken_s <= RECENT_DAMAGE_WINDOW_S
         )
 
+        spatial = self._spatial(ctx)
+
         return Features(
             phase=phase,
             hp_ratio=ctx.hp_ratio,
@@ -107,4 +121,51 @@ class FeatureBuilder:
             contribution_total=ctx.total_damage + ctx.total_assist,
             took_damage_recently=took_damage,
             damage_taken_ratio=ctx.last_damage_taken_ratio if took_damage else 0.0,
+            nearest_ally_dist=spatial["nearest_ally_dist"],
+            allies_near=spatial["allies_near"],
+            enemies_spotted_near=spatial["enemies_spotted_near"],
+            isolated=spatial["isolated"],
+            overextended=spatial["overextended"],
         )
+
+    def _spatial(self, ctx: BattleContext) -> dict:
+        """Indicateurs spatiaux a partir du feed minimap. Fallback sur : sans
+        position propre, tout est neutre (None/0/False)."""
+        own = ctx.own_pos
+        blank = {"nearest_ally_dist": None, "allies_near": 0,
+                 "enemies_spotted_near": 0, "isolated": False, "overextended": False}
+        if own is None:
+            return blank
+
+        def dist(a, b):
+            return math.hypot(a[0] - b[0], a[1] - b[1])
+
+        allies = ctx.ally_positions or []
+        enemies = ctx.enemy_positions_spotted or []
+
+        ally_dists = sorted(dist(own, a) for a in allies)
+        nearest = ally_dists[0] if ally_dists else None
+        allies_near = sum(1 for d in ally_dists if d <= SUPPORT_RADIUS_M)
+        enemies_near = sum(1 for e in enemies if dist(own, e) <= THREAT_RADIUS_M)
+
+        # Isole : on connait des allies mais aucun a portee de soutien.
+        isolated = bool(allies) and (nearest is None or nearest > ISOLATION_DIST_M)
+
+        # Surextension : le joueur est nettement plus avance vers les ennemis
+        # spottes que le centre de son equipe. Necessite allies + ennemis spottes.
+        overextended = False
+        if allies and enemies:
+            ax = sum(a[0] for a in allies) / len(allies)
+            az = sum(a[1] for a in allies) / len(allies)
+            ex = sum(e[0] for e in enemies) / len(enemies)
+            ez = sum(e[1] for e in enemies) / len(enemies)
+            ally_centroid = (ax, az)
+            enemy_centroid = (ex, ez)
+            # Distance du joueur au front ennemi vs celle du centre allie au front.
+            own_to_enemy = dist(own, enemy_centroid)
+            team_to_enemy = dist(ally_centroid, enemy_centroid)
+            overextended = own_to_enemy < team_to_enemy - SUPPORT_RADIUS_M
+
+        return {"nearest_ally_dist": nearest, "allies_near": allies_near,
+                "enemies_spotted_near": enemies_near, "isolated": isolated,
+                "overextended": overextended}

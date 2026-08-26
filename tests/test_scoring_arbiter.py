@@ -13,7 +13,8 @@ def _features(phase=BattlePhase.MID) -> Features:
                     time_since_contribution_s=0, flank_collapsing=False,
                     outnumbered_locally=False, endgame_few_left=False,
                     contribution_total=0, took_damage_recently=False,
-                    damage_taken_ratio=0.0)
+                    damage_taken_ratio=0.0, nearest_ally_dist=None, allies_near=0,
+                    enemies_spotted_near=0, isolated=False, overextended=False)
 
 
 def _cand(rule_id, cat, urgency=0.8, impact=0.8, confidence=1.0,

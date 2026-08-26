@@ -29,6 +29,7 @@ class AdviceCategory(str, Enum):
     ENDGAME = "ENDGAME"
     POSITIVE = "POSITIVE"
     REACTION = "REACTION"      # reactions breves aux evenements (tir recu...)
+    POSITIONING = "POSITIONING"  # placement (isolement, surextension, menace locale)
     GARAGE = "GARAGE"
 
 

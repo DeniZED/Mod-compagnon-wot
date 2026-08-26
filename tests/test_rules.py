@@ -6,6 +6,7 @@ from wot_companion.core.context.features import FeatureBuilder
 from wot_companion.core.rules.base import RuleContext
 from wot_companion.core.rules.hp_management import HpManagementRule
 from wot_companion.core.rules.initial_plan import InitialPlanRule
+from wot_companion.core.rules.positioning import PositioningRule
 from wot_companion.core.rules.positive import PositiveReinforcementRule
 from wot_companion.core.rules.reaction import HitTakenReactionRule
 from wot_companion.core.rules.retreat import RetreatRule
@@ -206,6 +207,49 @@ def test_reaction_breaks_contact_when_low():
     ctx.last_damage_taken_ratio = 0.1
     out = HitTakenReactionRule().evaluate(_rc(ctx))
     assert len(out) == 1 and out[0].action == "BREAK_CONTACT"
+
+
+def _pos_ctx(own, allies, enemies, elapsed=300.0):
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = elapsed
+    ctx.own_pos = own
+    ctx.ally_positions = allies
+    ctx.enemy_positions_spotted = enemies
+    return ctx
+
+
+def test_positioning_local_threat():
+    # 2 ennemis spottes proches, aucun allie proche -> sous-nombre local.
+    ctx = _pos_ctx((0, 0), [(400, 0)], [(100, 0), (120, 0)])
+    out = PositioningRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "LOCAL_OUTNUMBERED"
+
+
+def test_positioning_isolated():
+    # Allie le plus proche a 300 m, aucun ennemi -> isolement.
+    ctx = _pos_ctx((0, 0), [(300, 0)], [])
+    out = PositioningRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "REGROUP"
+
+
+def test_positioning_overextended():
+    # Joueur nettement devant le centre allie, front ennemi loin devant.
+    ctx = _pos_ctx((0, 0), [(-300, 0)], [(300, 0)])
+    out = PositioningRule().evaluate(_rc(ctx))
+    assert len(out) == 1 and out[0].action == "FALL_BACK_TEMPO"
+
+
+def test_positioning_silent_without_positions():
+    # Fallback sûr : aucune position -> silence.
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 300
+    assert PositioningRule().evaluate(_rc(ctx)) == []
+
+
+def test_positioning_silent_when_supported():
+    # Allie a portee, pas de menace -> rien a dire.
+    ctx = _pos_ctx((0, 0), [(50, 0)], [])
+    assert PositioningRule().evaluate(_rc(ctx)) == []
 
 
 def test_context_tracks_damage_taken():
