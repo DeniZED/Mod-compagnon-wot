@@ -5,28 +5,66 @@ les MEILLEURS joueurs de chaque partie (pas le joueur moyen), décode leurs
 trajectoires, agrège en zones efficaces (PositionCluster) et écrit un JSON
 portable — la « best des bases » que le compagnon interrogera à chaud.
 
+Conçu pour PASSER À L'ÉCHELLE (dizaines de milliers de replays) : les parties
+sont traitées en flux, une à la fois, sans jamais toutes les charger en mémoire.
+
 Usage :
     python -m wot_companion.tools.build_tk replays/ -o tk_base.json
-    python -m wot_companion.tools.build_tk r1.wotreplay r2.wotreplay --winners-only
+    python -m wot_companion.tools.build_tk replays/ --winners-only --limit 2000
 """
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
-from typing import List
+from typing import Iterator, List
 
 from ..replays.parse import ReplayParseError, parse_replay_full
 from ..tactical_knowledge.aggregate import build_position_clusters
 from ..tactical_knowledge.store import save_clusters
 
 
-def _iter_replays(paths: List[str]):
+def _iter_replay_paths(paths: List[str]) -> Iterator[Path]:
     for p in paths:
         path = Path(p)
         if path.is_dir():
             yield from sorted(path.rglob("*.wotreplay"))
         elif path.suffix == ".wotreplay":
             yield path
+
+
+class _Stats:
+    def __init__(self) -> None:
+        self.ok = self.skip = self.err = 0
+
+
+def _iter_datasets(paths: Iterator[Path], stats: _Stats, limit: int | None,
+                   progress_every: int):
+    """Génère les ReplayDataset exploitables, en flux (mémoire bornée)."""
+    t0 = time.time()
+    seen = 0
+    for path in paths:
+        if limit is not None and seen >= limit:
+            break
+        seen += 1
+        try:
+            ds = parse_replay_full(str(path))
+        except ReplayParseError:
+            stats.skip += 1
+            continue
+        except Exception:
+            stats.err += 1
+            continue
+        if not ds.vehicles or not ds.trajectories:
+            stats.skip += 1       # replay sans résultats ou format non décodable
+            continue
+        stats.ok += 1
+        yield ds
+        if progress_every and seen % progress_every == 0:
+            el = time.time() - t0
+            rate = seen / el if el else 0
+            print("  ... %d parcourus (%d exploitables) — %.0f/s"
+                  % (seen, stats.ok, rate))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,39 +77,37 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--winners-only", action="store_true",
                     help="N'apprendre que de l'équipe gagnante.")
     ap.add_argument("--min-samples", type=int, default=3)
+    ap.add_argument("--limit", type=int, default=None,
+                    help="Ne traiter que les N premiers replays (test rapide).")
+    ap.add_argument("--progress-every", type=int, default=200)
     args = ap.parse_args(argv)
 
-    datasets = []
-    n_ok = n_skip = 0
-    for path in _iter_replays(args.paths):
-        try:
-            ds = parse_replay_full(str(path))
-        except ReplayParseError as exc:
-            print("! %s : %s" % (path.name, exc))
-            n_skip += 1
-            continue
-        if not ds.vehicles or not ds.trajectories:
-            print("~ %s : pas de résultats/trajectoires, ignoré" % path.name)
-            n_skip += 1
-            continue
-        datasets.append(ds)
-        n_ok += 1
-        print("+ %s : %s (%s) %d chars, %d trajectoires"
-              % (path.name, ds.summary.map_label or ds.summary.map_id,
-                 ds.summary.result, len(ds.vehicles), len(ds.trajectories)))
+    stats = _Stats()
+    t0 = time.time()
+    print("Lecture des replays en flux (Ctrl-C pour arrêter proprement)...")
+    datasets = _iter_datasets(
+        _iter_replay_paths(args.paths), stats, args.limit, args.progress_every)
 
-    if not datasets:
-        print("Aucun replay exploitable.")
+    # L'agrégateur consomme le flux sans le matérialiser : un seul replay vit
+    # en mémoire à la fois, seuls les accumulateurs de cellules sont conservés.
+    try:
+        clusters = build_position_clusters(
+            datasets, cell_size=args.cell_size, performers_per_battle=args.performers,
+            winners_only=args.winners_only, min_samples=args.min_samples)
+    except KeyboardInterrupt:
+        print("\nInterrompu — rien n'a été écrit.")
         return 1
 
-    clusters = build_position_clusters(
-        datasets, cell_size=args.cell_size, performers_per_battle=args.performers,
-        winners_only=args.winners_only, min_samples=args.min_samples)
-    save_clusters(args.out, clusters)
+    if not clusters:
+        print("Aucune zone produite (aucun replay exploitable ?).")
+        return 1
 
+    save_clusters(args.out, clusters)
     maps = sorted({c.map_id for c in clusters})
-    print("\n%d replays agrégés (%d ignorés) -> %d zones sur %d carte(s)"
-          % (n_ok, n_skip, len(clusters), len(maps)))
+    el = time.time() - t0
+    print("\n%d replays exploités (%d ignorés, %d erreurs) en %.0fs"
+          % (stats.ok, stats.skip, stats.err, el))
+    print("-> %d zones sur %d carte(s) : %s" % (len(clusters), len(maps), ", ".join(maps)))
     print("Base écrite : %s" % args.out)
     return 0
 

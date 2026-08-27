@@ -59,19 +59,19 @@ def default_classifier(vehicle_type: Optional[str]) -> Optional[Archetype]:
 
 @dataclass
 class _Cell:
-    """Accumulateur d'une cellule de grille pour une clé (carte, phase, archétype)."""
+    """Accumulateur d'une cellule de grille pour une clé (carte, phase, archétype).
+
+    Uniquement des compteurs scalaires : aucune structure ne croît avec le nombre
+    de replays (impératif à l'échelle de dizaines de milliers de parties). La
+    déduplication char↔cellule se fait dans la boucle, pas ici.
+    """
     sx: float = 0.0            # somme pondérée des x
     sz: float = 0.0
     weight: float = 0.0        # somme des poids (impact combat)
     points: int = 0            # nb de points bruts
-    vehicles: set = None       # vehicleIDs distincts passés par la cellule
+    n_veh: int = 0             # nb de chars distincts ayant contribué
     dmg: float = 0.0           # somme impact des chars contributeurs (dédupliqué)
     survived: int = 0
-    veh_seen: set = None       # pour ne compter dmg/survie qu'une fois par char
-
-    def __post_init__(self):
-        self.vehicles = set()
-        self.veh_seen = set()
 
 
 def _sample_cluster(
@@ -112,9 +112,17 @@ def build_position_clusters(
     - `full_sample_size` : nb de points au-delà duquel la confiance sature à 1.
     """
     cells: Dict[Tuple[str, str, Archetype, str, int, int], _Cell] = defaultdict(_Cell)
+    # Déduplication char↔cellule à mémoire bornée : les points d'un même char
+    # arrivent consécutivement (voir _sample_cluster), donc il suffit de retenir
+    # les cellules du char COURANT ; on remet à zéro au changement de char.
+    cur_vid = None
+    seen_cells: set = set()
     for map_id, spawn, arch, phase, v, (x, z) in _sample_cluster(
         datasets, classifier, performers_per_battle, winners_only
     ):
+        if v.vehicle_id != cur_vid:
+            cur_vid = v.vehicle_id
+            seen_cells = set()
         gx, gz = int(x // cell_size), int(z // cell_size)
         key = (map_id, spawn, arch, phase, gx, gz)
         c = cells[key]
@@ -123,9 +131,9 @@ def build_position_clusters(
         c.sz += z * w
         c.weight += w
         c.points += 1
-        c.vehicles.add(v.vehicle_id)
-        if v.vehicle_id not in c.veh_seen:
-            c.veh_seen.add(v.vehicle_id)
+        if key not in seen_cells:
+            seen_cells.add(key)
+            c.n_veh += 1
             c.dmg += v.combat_score
             c.survived += 1 if v.survived else 0
 
@@ -141,13 +149,15 @@ def build_position_clusters(
         if c.points < min_samples or c.weight <= 0:
             continue
         cx, cz = c.sx / c.weight, c.sz / c.weight
-        n_veh = len(c.veh_seen) or 1
+        n_veh = c.n_veh or 1
         avg_impact = c.dmg / n_veh
         popularity = c.points / float(max_points[(map_id, phase)] or 1)
         survival = c.survived / float(n_veh)
         # 3000 d'impact combat ~ excellent -> ancre la normalisation.
         effectiveness = min(avg_impact / 3000.0, 1.0)
-        confidence = min(c.points / float(full_sample_size), 1.0)
+        # Confiance = nb de chars DISTINCTS (≈ parties) ayant validé la zone,
+        # pas le nb de points bruts : robuste à l'échantillonnage des trajectoires.
+        confidence = min(n_veh / float(full_sample_size), 1.0)
         clusters.append(PositionCluster(
             map_id=map_id, spawn=spawn, phase=phase, archetype=arch,
             center=(round(cx, 1), round(cz, 1)), radius=cell_size / 2.0,
