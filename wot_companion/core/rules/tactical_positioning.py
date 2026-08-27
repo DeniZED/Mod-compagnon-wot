@@ -108,13 +108,16 @@ class TacticalPositioningRule(Rule):
 
         direction = _cardinal(dx, dz)
         # Confiance du conseil : bornee par la confiance statistique de la zone.
-        confidence = min(0.75, 0.4 + zone.confidence * 0.4)
+        confidence = min(0.8, 0.45 + zone.confidence * 0.4)
+        # Léger relèvement : reste SOUS les alertes réactives (HP bas, repli,
+        # sous-nombre) pour ne jamais les court-circuiter, mais passe au-dessus des
+        # conseils faibles et du seuil, afin d'apparaître dans les temps calmes.
         return [CandidateAdvice(
             rule_id=self.id, category=AdviceCategory.POSITIONING,
             action="REPOSITION_TO_ZONE", reason_code="REPLAY_EFFECTIVE_ZONE",
             template_key="pos_replay_zone", severity=Severity.INFO,
             ttl_seconds=8.0, cooldown_key="positioning_replay",
-            urgency=0.45, impact=0.6, confidence=confidence,
+            urgency=0.5, impact=0.65, confidence=confidence,
             context={
                 "direction": direction,
                 "distance_m": int(round(dist)),

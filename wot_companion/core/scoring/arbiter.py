@@ -9,12 +9,15 @@ journal produit exactement les memes decisions (deterministe).
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from ...settings import AdviceCategory, Settings, Severity
 from ..advice import AdviceObject, CandidateAdvice
 from ..context.features import BattlePhase, Features
 from .scorer import Scorer
+
+logger = logging.getLogger("wot_companion.arbiter")
 
 _SEVERITY_RANK = {
     Severity.CRITICAL: 3, Severity.ATTENTION: 2,
@@ -111,12 +114,15 @@ class AdviceArbiter:
         s = self.settings
 
         scored: list[tuple[float, int, CandidateAdvice, AdviceObject]] = []
+        diag: list[str] = []            # trace decisionnelle (diagnostic)
         for cand in candidates:
             if not s.category_enabled(cand.category.value):
+                diag.append("%s: categorie desactivee" % cand.rule_id)
                 continue
             is_critical = cand.severity is Severity.CRITICAL
             # Personnalite silencieuse : uniquement le critique.
             if s.personality.value == "silencieux" and not is_critical:
+                diag.append("%s: mode silencieux" % cand.rule_id)
                 continue
 
             # Les reactions gerent leur propre cadence (min_interval_s) : on ne
@@ -132,12 +138,17 @@ class AdviceArbiter:
             total = breakdown.total
 
             if total < threshold:
+                diag.append("%s: score %.1f < seuil %.1f (rep=%.1f)"
+                            % (cand.rule_id, total, threshold, repetition))
                 continue
             if not self._passes_cooldown(cand, now_s, is_critical):
+                diag.append("%s: score %.1f mais cooldown" % (cand.rule_id, total))
                 continue
             if (features.phase is BattlePhase.EARLY and not is_critical
                     and self.state.early_shown >= s.anti_spam.max_early_advices):
+                diag.append("%s: score %.1f mais plafond early" % (cand.rule_id, total))
                 continue
+            diag.append("%s: score %.1f ELIGIBLE" % (cand.rule_id, total))
 
             advice = AdviceObject(
                 rule_id=cand.rule_id, category=cand.category.value,
@@ -149,6 +160,10 @@ class AdviceArbiter:
             )
             scored.append((total, _SEVERITY_RANK.get(cand.severity, 1), cand, advice))
 
+        # Diagnostic : quand une regle SURVEILLEE est candidate mais non retenue,
+        # trace (throttle) qui a gagne et pourquoi les autres ont ete recales.
+        self._log_decision(candidates, scored, diag, now_s)
+
         if not scored:
             return None
 
@@ -158,6 +173,25 @@ class AdviceArbiter:
         _, _, chosen_cand, chosen = scored[0]
         self._commit(chosen_cand, now_s, features.phase)
         return chosen
+
+    _WATCH = "positioning.replay_zones"
+    _diag_last_s: float = -999.0
+
+    def _log_decision(self, candidates, scored, diag, now_s: float) -> None:
+        if not logger.isEnabledFor(logging.INFO):
+            return
+        watched = any(c.rule_id == self._WATCH for c in candidates)
+        chosen = scored and min(scored, key=lambda t: (-t[0], -t[1], t[2].rule_id))
+        chosen_is_watch = chosen and chosen[2].rule_id == self._WATCH
+        # On ne trace que si la regle surveillee perd (sinon bruit), throttle 15 s.
+        if not watched or chosen_is_watch:
+            return
+        if now_s - self._diag_last_s < 15.0:
+            return
+        self._diag_last_s = now_s
+        win = chosen[2].rule_id if chosen else "aucun"
+        logger.info("ARBITRE t=%.0f: %s recale. Gagnant=%s | %s",
+                    now_s, self._WATCH, win, " ; ".join(diag))
 
     def _commit(self, cand: CandidateAdvice, now_s: float, phase: BattlePhase) -> None:
         st = self.state
