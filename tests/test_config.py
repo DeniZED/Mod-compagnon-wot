@@ -23,6 +23,27 @@ def test_roundtrip_preserves_preferences(tmp_path):
     assert loaded.ui.max_bubble_chars == 100
 
 
+def test_stale_config_reenables_new_categories(tmp_path):
+    # Ancienne config (opt-in) sans POSITIONING/REACTION -> ne doit PAS les éteindre.
+    path = tmp_path / "cfg.json"
+    path.write_text('{"personality": "coach", "enabled_categories": '
+                    '["INITIAL_PLAN", "HP", "TEMPO", "ROTATION"]}', encoding="utf-8")
+    s = load_settings(path)
+    assert "POSITIONING" in s.enabled_categories
+    assert "REACTION" in s.enabled_categories
+
+
+def test_disabled_categories_optout_roundtrip(tmp_path):
+    s = Settings()
+    s.enabled_categories = {c.value for c in __import__(
+        "wot_companion.settings", fromlist=["AdviceCategory"]).AdviceCategory} - {"POSITIVE"}
+    path = tmp_path / "cfg.json"
+    save_settings(s, path)
+    loaded = load_settings(path)
+    assert "POSITIVE" not in loaded.enabled_categories      # désactivation respectée
+    assert "POSITIONING" in loaded.enabled_categories       # le reste actif
+
+
 def test_tactical_kb_path_persisted(tmp_path):
     path = tmp_path / "cfg.json"
     save_settings(Settings(tactical_kb_path="C:/wot/tk_base.json"), path)

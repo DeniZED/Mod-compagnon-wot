@@ -26,7 +26,11 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
         "personality": s.personality.value,
         "intensity": s.intensity,
         "session_objective": s.session_objective,
-        "enabled_categories": sorted(s.enabled_categories),
+        # Opt-out : on ne mémorise QUE les catégories explicitement désactivées.
+        # Ainsi toute catégorie ajoutée plus tard est active par défaut (sinon une
+        # config ancienne éteignait silencieusement les nouvelles familles).
+        "disabled_categories": sorted(
+            {c.value for c in AdviceCategory} - set(s.enabled_categories)),
         "language": s.language,
         "ui": {
             "anchor": s.ui.anchor,
@@ -60,11 +64,15 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
         s.intensity = float(cfg["intensity"])
     if "session_objective" in cfg:
         s.session_objective = cfg["session_objective"] or None
-    if isinstance(cfg.get("enabled_categories"), list):
-        valid = {c.value for c in AdviceCategory}
-        cats = {c for c in cfg["enabled_categories"] if c in valid}
-        if cats:
-            s.enabled_categories = cats
+    valid = {c.value for c in AdviceCategory}
+    if isinstance(cfg.get("disabled_categories"), list):
+        # Format opt-out : actif = tout sauf ce qui est explicitement désactivé.
+        disabled = {c for c in cfg["disabled_categories"] if c in valid}
+        s.enabled_categories = valid - disabled
+    # Ancien format opt-in (`enabled_categories`) volontairement IGNORÉ : il n'a
+    # jamais résulté que de l'enregistrement automatique de toutes les catégories
+    # d'alors, et bloquait les familles ajoutées depuis (positionnement, réaction).
+    # -> on repart des valeurs par défaut (toutes actives) pour ces vieux fichiers.
     if isinstance(cfg.get("language"), str):
         s.language = cfg["language"]
 
