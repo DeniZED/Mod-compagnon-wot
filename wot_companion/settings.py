@@ -80,6 +80,7 @@ class UISettings:
     streamer_mode: bool = False
     text_scale: float = 1.0
     click_through: bool = True         # laisse passer les clics (Windows)
+    overlay_kind: str = "console"      # console / tk / none — memorise entre lancements
     color_scheme: tuple[str, ...] = ("normal", "attention", "critical", "positive")
 
 

@@ -41,9 +41,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Chemin du JSON de zones (build_tk). Memorise : les "
                              "conseils de placement issus des replays s'activent. "
                              "Passer \"\" (vide) pour desactiver.")
-    parser.add_argument("--overlay", choices=["console", "tk", "none"], default="console",
-                        help="Affichage des conseils : console (defaut), tk (overlay "
-                             "graphique in-game), none.")
+    parser.add_argument("--overlay", choices=["console", "tk", "none"], default=None,
+                        help="Affichage des conseils : console, tk (overlay graphique "
+                             "in-game), none. Memorise : par defaut, reprend le dernier "
+                             "choix (console au premier lancement).")
     parser.add_argument("--overlay-anchor",
                         choices=["top_right", "top_left", "bottom_left", "bottom_right"],
                         default=None, help="Coin d'ancrage de l'overlay (evite la minimap).")
@@ -78,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         settings.session_objective = args.objective or None
     if args.tactical_kb is not None:
         settings.tactical_kb_path = args.tactical_kb or None
+    if args.overlay is not None:
+        settings.ui.overlay_kind = args.overlay
+    overlay_kind = settings.ui.overlay_kind
     if args.overlay_anchor is not None:
         settings.ui.anchor = args.overlay_anchor
     if args.overlay_x is not None:
@@ -90,12 +94,15 @@ def main(argv: list[str] | None = None) -> int:
 
     runner = LiveRunner(
         settings=settings, host=args.host, port=args.port,
-        db_path=args.db, use_color=not args.no_color, overlay=args.overlay,
+        db_path=args.db, use_color=not args.no_color, overlay=overlay_kind,
         config_path=config_path, overlay_debug=args.overlay_debug,
     )
     print(f"Config : {config_path}  (personnalite={settings.personality.value}, "
           f"intensite={settings.intensity}, objectif={settings.session_objective}, "
-          f"overlay={args.overlay})")
+          f"overlay={overlay_kind})")
+    if overlay_kind == "console":
+        print("NB : overlay=console (pas d'affichage in-game). "
+              "Ajoute --overlay tk pour l'overlay graphique dans le jeu.")
     kb = runner.app.engine.tactical_kb
     if settings.tactical_kb_path:
         print(f"Base tactique : {len(kb.clusters)} zones chargees "
