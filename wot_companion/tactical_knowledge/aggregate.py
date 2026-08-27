@@ -1,0 +1,158 @@
+"""Agrégation replays -> PositionCluster (Tactical Knowledge Base, §9/§23).
+
+Chaîne : parse_replay_full() -> meilleurs joueurs -> leurs trajectoires ->
+clustering spatial par (carte, phase, archétype) -> zones efficaces.
+
+Principe Fair Play : on n'agrège QUE de la connaissance historique (où les bons
+joueurs se placent et performent). Aucune position live, aucune présence réelle.
+On n'apprend jamais du joueur moyen : seuls les meilleurs impacts de chaque
+partie alimentent la base (règle « best of each battle »).
+
+Le classement char -> archétype est branchable (`classifier`). La table de départ
+`ARCHETYPE_BY_TAG` couvre les chars vus dans les replays de test ; tout tag inconnu
+est ignoré (jamais deviné), ce qui garde la base propre.
+"""
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
+
+from ..replays.parse import ReplayDataset, VehicleResult
+from .models import Archetype, PositionCluster
+
+XZ = Tuple[float, float]
+
+# Bornes de phase alignées sur core.context.features (EARLY<=150s, MID<=480s).
+_EARLY_MAX_S = 150.0
+_MID_MAX_S = 480.0
+
+
+def phase_at(t_s: float) -> str:
+    if t_s <= _EARLY_MAX_S:
+        return "early"
+    if t_s <= _MID_MAX_S:
+        return "mid"
+    return "late"
+
+
+# Table de départ tag -> archétype (extensible). Volontairement conservatrice :
+# un tag absent -> None -> le char est ignoré à l'agrégation.
+ARCHETYPE_BY_TAG: Dict[str, Archetype] = {
+    "usa:A179_Black_Rock": Archetype.HULL_DOWN_HEAVY,
+    "usa:A83_T110E4": Archetype.ASSAULT_TD,
+    "ussr:R132_VNII_100LT": Archetype.ACTIVE_SCOUT,
+    "czech:Cz17_Vz_55": Archetype.AUTOLOADER_HEAVY,
+    "germany:G185_Leopard_120_Verbessert": Archetype.SNIPER_MEDIUM,
+    "germany:G165_Erich_Konzept_I": Archetype.FLEXIBLE_MEDIUM,
+    "germany:G56_E-100": Archetype.SUPER_HEAVY,
+    "france:F18_Bat_Chatillon25t": Archetype.AUTOLOADER_MEDIUM,
+}
+
+
+def default_classifier(vehicle_type: Optional[str]) -> Optional[Archetype]:
+    if not vehicle_type:
+        return None
+    return ARCHETYPE_BY_TAG.get(vehicle_type)
+
+
+@dataclass
+class _Cell:
+    """Accumulateur d'une cellule de grille pour une clé (carte, phase, archétype)."""
+    sx: float = 0.0            # somme pondérée des x
+    sz: float = 0.0
+    weight: float = 0.0        # somme des poids (impact combat)
+    points: int = 0            # nb de points bruts
+    vehicles: set = None       # vehicleIDs distincts passés par la cellule
+    dmg: float = 0.0           # somme impact des chars contributeurs (dédupliqué)
+    survived: int = 0
+    veh_seen: set = None       # pour ne compter dmg/survie qu'une fois par char
+
+    def __post_init__(self):
+        self.vehicles = set()
+        self.veh_seen = set()
+
+
+def _sample_cluster(
+    datasets: Iterable[ReplayDataset],
+    classifier: Callable[[Optional[str]], Optional[Archetype]],
+    performers_per_battle: int,
+    winners_only: bool,
+) -> Iterable[Tuple[str, str, Archetype, str, VehicleResult, XZ]]:
+    """Génère (map_id, spawn, archétype, phase, résultat, (x,z)) point par point."""
+    for ds in datasets:
+        map_id = ds.summary.map_id or "unknown"
+        best = ds.best_performers(performers_per_battle, winners_only=winners_only)
+        for v in best:
+            arch = classifier(v.vehicle_type)
+            if arch is None:
+                continue
+            spawn = "team%s" % (v.team if v.team is not None else "?")
+            for (t, x, z) in ds.trajectory_of(v.vehicle_id):
+                yield map_id, spawn, arch, phase_at(t), v, (x, z)
+
+
+def build_position_clusters(
+    datasets: Iterable[ReplayDataset],
+    *,
+    classifier: Callable[[Optional[str]], Optional[Archetype]] = default_classifier,
+    cell_size: float = 40.0,
+    performers_per_battle: int = 5,
+    winners_only: bool = False,
+    min_samples: int = 3,
+    full_sample_size: int = 40,
+) -> List[PositionCluster]:
+    """Construit les PositionCluster depuis un lot de replays déjà parsés.
+
+    - `cell_size` : côté (m) de la grille de clustering.
+    - `performers_per_battle` : combien de meilleurs chars retenir par partie.
+    - `winners_only` : n'apprendre que de l'équipe gagnante.
+    - `min_samples` : nb minimal de points pour émettre une zone (anti-bruit).
+    - `full_sample_size` : nb de points au-delà duquel la confiance sature à 1.
+    """
+    cells: Dict[Tuple[str, str, Archetype, str, int, int], _Cell] = defaultdict(_Cell)
+    for map_id, spawn, arch, phase, v, (x, z) in _sample_cluster(
+        datasets, classifier, performers_per_battle, winners_only
+    ):
+        gx, gz = int(x // cell_size), int(z // cell_size)
+        key = (map_id, spawn, arch, phase, gx, gz)
+        c = cells[key]
+        w = float(max(v.combat_score, 1))
+        c.sx += x * w
+        c.sz += z * w
+        c.weight += w
+        c.points += 1
+        c.vehicles.add(v.vehicle_id)
+        if v.vehicle_id not in c.veh_seen:
+            c.veh_seen.add(v.vehicle_id)
+            c.dmg += v.combat_score
+            c.survived += 1 if v.survived else 0
+
+    # Normalisation : popularité relative au max de points dans la même (carte,phase).
+    max_points: Dict[Tuple[str, str], int] = defaultdict(int)
+    for (map_id, spawn, arch, phase, _gx, _gz), c in cells.items():
+        mp = (map_id, phase)
+        if c.points > max_points[mp]:
+            max_points[mp] = c.points
+
+    clusters: List[PositionCluster] = []
+    for (map_id, spawn, arch, phase, _gx, _gz), c in cells.items():
+        if c.points < min_samples or c.weight <= 0:
+            continue
+        cx, cz = c.sx / c.weight, c.sz / c.weight
+        n_veh = len(c.veh_seen) or 1
+        avg_impact = c.dmg / n_veh
+        popularity = c.points / float(max_points[(map_id, phase)] or 1)
+        survival = c.survived / float(n_veh)
+        # 3000 d'impact combat ~ excellent -> ancre la normalisation.
+        effectiveness = min(avg_impact / 3000.0, 1.0)
+        confidence = min(c.points / float(full_sample_size), 1.0)
+        clusters.append(PositionCluster(
+            map_id=map_id, spawn=spawn, phase=phase, archetype=arch,
+            center=(round(cx, 1), round(cz, 1)), radius=cell_size / 2.0,
+            popularity=popularity, effectiveness=effectiveness,
+            damage_score=effectiveness, assist_score=0.0,
+            survival_score=survival, sample_size=c.points, confidence=confidence,
+        ))
+    clusters.sort(key=lambda k: (k.effectiveness, k.popularity), reverse=True)
+    return clusters
