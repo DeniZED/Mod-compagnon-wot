@@ -110,6 +110,12 @@
       "detendu": "Y'a {enemies} ennemis spottes sur toi et {allies} pote(s) : temporise.",
       "silencieux": "Sous-nombre local : replie."
     },
+    "pos_replay_zone": {
+        "coach": "Zone plus efficace {direction} (~{distance_m} m). Les bons joueurs la privilegient a cette phase ({popularity_pct}% des references). Repositionne-toi si le flanc le permet.",
+        "commandant": "Meilleure zone {direction}, {distance_m} m. Bouge.",
+        "detendu": "Les bons se placent plutot {direction} (~{distance_m} m d'ici) a ce moment. A voir si tu peux y aller.",
+        "silencieux": "Zone efficace {direction}."
+    },
     "pos_overextended": {
       "coach": "Tu es nettement devant ton equipe : temporise et laisse tes alliees te rejoindre avant de pousser.",
       "commandant": "Trop avance. Temporise, attends l'equipe.",

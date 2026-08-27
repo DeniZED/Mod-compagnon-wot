@@ -10,6 +10,7 @@ from .positive import PositiveReinforcementRule
 from .reaction import HitTakenReactionRule
 from .retreat import RetreatRule
 from .rotation import NumericAwarenessRule
+from .tactical_positioning import TacticalPositioningRule
 from .tempo import TempoInitiativeRule
 
 
@@ -25,4 +26,5 @@ def default_rules() -> list[Rule]:
         PositiveReinforcementRule(),
         HitTakenReactionRule(),
         PositioningRule(),
+        TacticalPositioningRule(),
     ]

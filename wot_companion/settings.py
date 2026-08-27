@@ -96,6 +96,10 @@ class Settings:
     ui: UISettings = field(default_factory=UISettings)
     language: str = "fr"
 
+    # Base tactique (zones efficaces issues des replays). Chemin d'un JSON produit
+    # par `tools.build_tk`. None => aucune base, les conseils de zone restent muets.
+    tactical_kb_path: str | None = None
+
     # Integrations optionnelles, desactivees par defaut (local-first, section 10.3).
     wargaming_api_enabled: bool = False
     wargaming_api_key: str | None = None

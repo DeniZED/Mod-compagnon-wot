@@ -56,3 +56,28 @@ def test_nearest_ranks_effective_and_confident_first():
     ])
     near = tk.nearest_clusters("m", (100.0, 100.0), limit=3)
     assert near[0].effectiveness == 0.9 and near[0].confidence == 1.0
+
+
+def test_app_loads_kb_from_settings(tmp_path):
+    from wot_companion.app import CompanionApp
+    from wot_companion.settings import Settings
+    p = tmp_path / "tk.json"
+    save_clusters(str(p), [_cluster(), _cluster(center=(300.0, 400.0))])
+    app = CompanionApp(settings=Settings(tactical_kb_path=str(p)))
+    assert len(app.engine.tactical_kb.clusters) == 2
+    app.close()
+
+
+def test_app_without_kb_path_is_empty():
+    from wot_companion.app import CompanionApp
+    app = CompanionApp()
+    assert app.engine.tactical_kb.clusters == []
+    app.close()
+
+
+def test_app_missing_kb_file_starts_empty(tmp_path):
+    from wot_companion.app import CompanionApp
+    from wot_companion.settings import Settings
+    app = CompanionApp(settings=Settings(tactical_kb_path=str(tmp_path / "absent.json")))
+    assert app.engine.tactical_kb.clusters == []
+    app.close()

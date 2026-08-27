@@ -40,7 +40,8 @@ def test_build_clusters_groups_by_cell_phase_archetype():
                                        performers_per_battle=5)
     assert clusters, "au moins une zone attendue"
     top = clusters[0]
-    assert top.map_id == "08_ruinberg" and top.phase == "early"
+    # map_id canonicalisé (08_ruinberg -> ruinberg) pour coller au live.
+    assert top.map_id == "ruinberg" and top.phase == "early"
     assert top.archetype == Archetype.HULL_DOWN_HEAVY
     assert top.spawn == "team1"
     assert 90 <= top.center[0] <= 130 and top.center[1] == 200.0

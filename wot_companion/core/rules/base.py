@@ -22,6 +22,7 @@ class RuleContext:
     knowledge: object          # KnowledgeBase (evite l'import circulaire)
     session_objective: str | None = None
     player_profile: dict | None = None
+    tactical_kb: object | None = None   # TacticalKnowledgeBase (zones issues des replays)
 
 
 class Rule(ABC):

@@ -32,13 +32,35 @@ class CompanionApp:
         self.knowledge = knowledge or KnowledgeBase()
         self.store = store or HistoryStore(":memory:")
         self.overlay = overlay
+        tactical_kb = self._load_tactical_kb()
         self.engine = AdviceEngine(
-            settings=self.settings, knowledge=self.knowledge, overlay=overlay
+            settings=self.settings, knowledge=self.knowledge, overlay=overlay,
+            tactical_kb=tactical_kb,
         )
         self.trends = TrendAnalyzer(self.store)
         self.trace = BattleTraceRecorder(self.store)
         self._silenced = False
         self._prev_personality = self.settings.personality
+
+    def _load_tactical_kb(self):
+        """Charge la base tactique (zones issues des replays) si configuree.
+
+        Absente ou illisible : on continue sans (base vide) — les conseils de zone
+        restent muets, le reste du moteur fonctionne normalement.
+        """
+        from .tactical_knowledge.store import TacticalKnowledgeBase
+        path = self.settings.tactical_kb_path
+        if not path:
+            return TacticalKnowledgeBase()
+        try:
+            kb = TacticalKnowledgeBase.load(path)
+            logger.info("Base tactique chargee : %d zones (%s)", len(kb.clusters), path)
+            return kb
+        except FileNotFoundError:
+            logger.warning("Base tactique introuvable (%s) : demarrage sans.", path)
+        except Exception:
+            logger.exception("Base tactique illisible (%s) : demarrage sans.", path)
+        return TacticalKnowledgeBase()
 
     # ---- Mode silence (BAT-008) -------------------------------------------
     def toggle_silence(self) -> bool:

@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
+from ..core.maps import canonical_map_id
 from ..replays.parse import ReplayDataset, VehicleResult
 from .models import Archetype, PositionCluster
 
@@ -81,7 +82,7 @@ def _sample_cluster(
 ) -> Iterable[Tuple[str, str, Archetype, str, VehicleResult, XZ]]:
     """Génère (map_id, spawn, archétype, phase, résultat, (x,z)) point par point."""
     for ds in datasets:
-        map_id = ds.summary.map_id or "unknown"
+        map_id = canonical_map_id(ds.summary.map_id) or "unknown"
         best = ds.best_performers(performers_per_battle, winners_only=winners_only)
         for v in best:
             arch = classifier(v.vehicle_type)

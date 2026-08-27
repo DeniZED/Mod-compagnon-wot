@@ -35,9 +35,16 @@ class AdviceEngine:
         overlay=None,
         journal: AdviceJournal | None = None,
         fairplay: FairPlayFilter | None = None,
+        tactical_kb=None,
     ) -> None:
         self.settings = settings or Settings()
         self.knowledge = knowledge or KnowledgeBase()
+        # Base tactique issue des replays (zones efficaces). Vide par defaut :
+        # le moteur fonctionne sans, les regles de zone restent alors silencieuses.
+        if tactical_kb is None:
+            from ..tactical_knowledge.store import TacticalKnowledgeBase
+            tactical_kb = TacticalKnowledgeBase()
+        self.tactical_kb = tactical_kb
         self.fairplay = fairplay or FairPlayFilter(audit=True)
         self.scorer = Scorer(self.settings.scoring)
         self.arbiter = AdviceArbiter(self.settings, self.scorer)
@@ -128,6 +135,7 @@ class AdviceEngine:
             battle=self.context, features=features, knowledge=self.knowledge,
             session_objective=self.settings.session_objective,
             player_profile=self.player_profile,
+            tactical_kb=self.tactical_kb,
         )
 
         candidates = []

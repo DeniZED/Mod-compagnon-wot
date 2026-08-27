@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-from .models import Archetype, PositionCluster
+from .models import Archetype, PositionCluster, VehicleClass
 
 TK_FORMAT_VERSION = 1
 
@@ -81,13 +81,15 @@ class TacticalKnowledgeBase:
         *,
         phase: Optional[str] = None,
         archetype: Optional[Archetype] = None,
+        vehicle_class: Optional[VehicleClass] = None,
         max_dist: float = 120.0,
         limit: int = 3,
     ) -> List[PositionCluster]:
         """Zones efficaces proches de `pos` sur `map_id`, triées par pertinence.
 
         Pertinence = efficacité pondérée par la proximité (les zones lointaines
-        pèsent moins). Filtre optionnel par phase et archétype.
+        pèsent moins). Filtres optionnels : phase, archétype exact, ou — plus
+        robuste entre vocabulaires — classe de véhicule (medium, heavy, ...).
         """
         x, z = pos
         scored = []
@@ -97,6 +99,8 @@ class TacticalKnowledgeBase:
             if phase is not None and c.phase != phase:
                 continue
             if archetype is not None and c.archetype != archetype:
+                continue
+            if vehicle_class is not None and c.archetype.vehicle_class != vehicle_class:
                 continue
             dx, dz = c.center[0] - x, c.center[1] - z
             dist = (dx * dx + dz * dz) ** 0.5
