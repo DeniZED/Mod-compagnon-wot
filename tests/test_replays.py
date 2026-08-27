@@ -8,7 +8,8 @@ import struct
 import pytest
 
 from wot_companion.replays import parse_replay
-from wot_companion.replays.parse import ReplayParseError, read_json_blocks
+from wot_companion.replays.parse import (
+    ReplayParseError, parse_replay_full, read_json_blocks, vehicle_results)
 
 _MAGIC = b"\x12\x32\x34\x11"
 
@@ -87,3 +88,81 @@ def test_truncated_block_raises(tmp_path):
     p.write_bytes(_MAGIC + struct.pack("<I", 1) + struct.pack("<I", 999))
     with pytest.raises(ReplayParseError):
         read_json_blocks(str(p))
+
+
+# --------------------------------------------------------------------------- #
+# Resultats par vehicule + parse complet (base "meilleurs joueurs").
+# --------------------------------------------------------------------------- #
+def _meta_roster():
+    m = _meta()
+    m["playerID"] = 5000            # compte du proprietaire du replay
+    m["vehicles"] = {
+        "101": {"vehicleType": "usa:A179_Black_Rock", "name": "_darkhell_", "team": 1},
+        "102": {"vehicleType": "ussr:R132_VNII_100LT", "name": "Ally", "team": 1},
+        "201": {"vehicleType": "germany:G56_E-100", "name": "Foe", "team": 2},
+    }
+    return m
+
+
+def _results_multi():
+    common = {"winnerTeam": 1, "finishReason": 1}
+    personal = {"67361": {"team": 1, "damageDealt": 4512}, "avatar": {}}
+    players = {
+        "5000": {"realName": "_darkhell_", "name": "_darkhell_", "team": 1},
+        "6000": {"realName": "Ally", "name": "Ally", "team": 1},
+        "7000": {"realName": "Foe", "name": "Foe", "team": 2},
+    }
+    vehicles = {
+        "101": [{"accountDBID": 5000, "team": 1, "damageDealt": 4512,
+                 "damageAssistedRadio": 179, "damageAssistedTrack": 0,
+                 "kills": 0, "spotted": 3, "health": 900, "maxHealth": 1950,
+                 "lifeTime": 400}],
+        "102": [{"accountDBID": 6000, "team": 1, "damageDealt": 2363,
+                 "damageAssistedRadio": 2063, "damageAssistedTrack": 100,
+                 "kills": 1, "spotted": 5, "health": 0, "maxHealth": 1500,
+                 "lifeTime": 300}],
+        "201": [{"accountDBID": 7000, "team": 2, "damageDealt": 6000,
+                 "damageAssistedRadio": 200, "damageAssistedTrack": 0,
+                 "kills": 3, "spotted": 1, "health": 0, "maxHealth": 2500,
+                 "lifeTime": 350}],
+    }
+    return [{"common": common, "personal": personal,
+             "players": players, "vehicles": vehicles}, {}, {}]
+
+
+def test_vehicle_results_extraction(tmp_path):
+    p = tmp_path / "r.wotreplay"
+    p.write_bytes(_make_replay([_meta_roster(), _results_multi()]))
+    blocks, _ = read_json_blocks(str(p))
+    res = vehicle_results(blocks)
+    assert set(res) == {101, 102, 201}
+    me = res[101]
+    assert me.is_player and me.name == "_darkhell_"
+    assert me.vehicle_type == "usa:A179_Black_Rock"
+    assert me.damage == 4512 and me.assist_total == 179 and me.survived is True
+    ally = res[102]
+    assert ally.is_player is False and ally.assist_total == 2163
+    assert ally.combat_score == 2363 + 2163 and ally.survived is False
+
+
+def test_parse_full_best_performers(tmp_path):
+    p = tmp_path / "f.wotreplay"
+    p.write_bytes(_make_replay([_meta_roster(), _results_multi()]))
+    ds = parse_replay_full(str(p))
+    assert ds.summary.result == "victory"
+    assert ds.summary_winner_team() == 1
+    # Le meilleur toutes equipes est l'ennemi (6000 impact), mais en "winners_only"
+    # on ne retient que l'equipe gagnante (1) : l'allie (4426) devant le joueur (4691?).
+    top_all = ds.best_performers(1)
+    assert top_all[0].vehicle_id == 201            # ennemi, plus fort impact brut
+    winners = ds.best_performers(2, winners_only=True)
+    assert {v.vehicle_id for v in winners} == {101, 102}
+    assert all(v.team == 1 for v in winners)
+
+
+def test_parse_full_no_results_is_safe(tmp_path):
+    p = tmp_path / "n.wotreplay"
+    p.write_bytes(_make_replay([_meta_roster()]))   # bataille en cours
+    ds = parse_replay_full(str(p))
+    assert ds.vehicles == {} and ds.trajectories == {}
+    assert ds.summary.has_results is False

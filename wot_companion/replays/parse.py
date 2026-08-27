@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import json
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 _MAGIC = b"\x12\x32\x34\x11"   # octets d'en-tete d'un .wotreplay
 
@@ -152,3 +152,162 @@ def _result(common: dict, player_team: Optional[int]) -> str:
     if winner == 0:
         return "draw"
     return "victory" if winner == player_team else "defeat"
+
+
+# --------------------------------------------------------------------------- #
+# Resultats par vehicule (bloc 1) — base pour selectionner les "meilleurs".
+# --------------------------------------------------------------------------- #
+@dataclass
+class VehicleResult:
+    """Performance d'un vehicule de la bataille (verite terrain du replay).
+
+    `vehicle_id` est l'ID d'entite BigWorld, identique a la cle des trajectoires
+    decodees : c'est le pont entre stats et deplacements pour batir les clusters.
+    """
+    vehicle_id: int
+    account_id: Optional[int] = None
+    name: Optional[str] = None
+    vehicle_type: Optional[str] = None   # tag, ex 'usa:A179_Black_Rock'
+    team: Optional[int] = None
+    is_player: bool = False              # le proprietaire du replay
+    damage: int = 0
+    assist_radio: int = 0
+    assist_track: int = 0
+    kills: int = 0
+    spotted: int = 0
+    survived: Optional[bool] = None
+    max_health: int = 0
+    life_time_s: Optional[int] = None
+
+    @property
+    def assist_total(self) -> int:
+        return self.assist_radio + self.assist_track
+
+    @property
+    def combat_score(self) -> int:
+        """Impact combat brut : degats + assistance (radio + chenilles)."""
+        return self.damage + self.assist_total
+
+
+def vehicle_results(blocks: List[dict]) -> Dict[int, VehicleResult]:
+    """Extrait {vehicle_id: VehicleResult} depuis le bloc de resultats (bloc 1).
+
+    Renvoie {} si le replay n'a pas de bloc resultats (bataille en cours).
+    """
+    if len(blocks) < 2:
+        return {}
+    root = _results_root(blocks[1])
+    if root is None:
+        return {}
+    vehicles = root.get("vehicles") or {}
+    players = root.get("players") or {}
+    # Le tag du char et son nom lisible vivent dans le roster du bloc 0 ;
+    # `playerID` y identifie le compte du proprietaire du replay.
+    meta = blocks[0] if blocks and isinstance(blocks[0], dict) else {}
+    roster = meta.get("vehicles") or {}
+    owner_account = meta.get("playerID")
+
+    out: Dict[int, VehicleResult] = {}
+    for vid_key, entry in vehicles.items():
+        veh = entry[0] if isinstance(entry, list) and entry else entry
+        if not isinstance(veh, dict):
+            continue
+        try:
+            vid = int(vid_key)
+        except (TypeError, ValueError):
+            continue
+        account_id = _num(veh.get("accountDBID")) or None
+        pinfo = players.get(str(account_id)) or players.get(account_id) or {}
+        rinfo = roster.get(str(vid)) or roster.get(vid) or {}
+        health = veh.get("health")
+        out[vid] = VehicleResult(
+            vehicle_id=vid,
+            account_id=account_id,
+            name=(rinfo.get("name") or pinfo.get("realName") or pinfo.get("name")),
+            vehicle_type=rinfo.get("vehicleType"),
+            team=_num(veh.get("team")) or (_num(rinfo.get("team")) if rinfo else None),
+            is_player=(account_id is not None and account_id == owner_account),
+            damage=_num(veh.get("damageDealt")),
+            assist_radio=_num(veh.get("damageAssistedRadio")),
+            assist_track=_num(veh.get("damageAssistedTrack")),
+            kills=_num(veh.get("kills")),
+            spotted=_num(veh.get("spotted")),
+            survived=(_num(health) > 0) if health is not None else None,
+            max_health=_num(veh.get("maxHealth")),
+            life_time_s=_num(veh.get("lifeTime")) if veh.get("lifeTime") is not None else None,
+        )
+    return out
+
+
+def _results_root(results: Any) -> Optional[dict]:
+    """Trouve l'entree porteuse de vehicles/players (1re entree de la liste)."""
+    if isinstance(results, list):
+        for part in results:
+            if isinstance(part, dict) and "vehicles" in part:
+                return part
+        return None
+    if isinstance(results, dict) and "vehicles" in results:
+        return results
+    return None
+
+
+@dataclass
+class ReplayDataset:
+    """Vue complete d'un replay : synthese + resultats par char + trajectoires."""
+    summary: ReplaySummary
+    vehicles: Dict[int, VehicleResult]
+    trajectories: Dict[int, List[Tuple[float, float, float]]]
+
+    def best_performers(self, n: int = 3, team: Optional[int] = None,
+                        winners_only: bool = False) -> List[VehicleResult]:
+        """Meilleurs vehicules par impact combat (degats + assist).
+
+        Sert a selectionner les references pour la Tactical Knowledge Base :
+        on n'apprend que des vehicules a fort impact, pas du joueur moyen.
+        """
+        winner = self.summary_winner_team() if winners_only else None
+        cands = [
+            v for v in self.vehicles.values()
+            if (team is None or v.team == team)
+            and (winner is None or v.team == winner)
+        ]
+        cands.sort(key=lambda v: v.combat_score, reverse=True)
+        return cands[:n]
+
+    def summary_winner_team(self) -> Optional[int]:
+        """Equipe gagnante deduite du resultat du joueur, ou None."""
+        me = next((v for v in self.vehicles.values() if v.is_player), None)
+        if me is None or me.team is None or self.summary.result is None:
+            return None
+        if self.summary.result == "victory":
+            return me.team
+        if self.summary.result == "defeat":
+            return 2 if me.team == 1 else 1
+        return None
+
+    def trajectory_of(self, vehicle_id: int) -> List[Tuple[float, float, float]]:
+        return self.trajectories.get(vehicle_id, [])
+
+
+def parse_replay_full(path: str | Path, min_move: float = 3.0) -> ReplayDataset:
+    """Parse complet : en-tete + resultats par vehicule + trajectoires decodees.
+
+    100 % local/hors-ligne. Le flux de positions est dechiffre et decompresse
+    (voir replays.decode). Point d'entree unique pour bâtir la base tactique.
+    """
+    from .decode import decrypt_decompress, extract_trajectories
+
+    data = Path(path).read_bytes()
+    blocks, binary_bytes = read_json_blocks(path)
+    summary = parse_replay(path)
+    vehicles = vehicle_results(blocks)
+
+    trajectories: Dict[int, List[Tuple[float, float, float]]] = {}
+    if binary_bytes > 0:
+        binary = data[len(data) - binary_bytes:]
+        try:
+            stream = decrypt_decompress(binary)
+            trajectories = extract_trajectories(stream, min_move=min_move)
+        except Exception:
+            trajectories = {}   # replay illisible cote positions : stats seules
+    return ReplayDataset(summary=summary, vehicles=vehicles, trajectories=trajectories)
