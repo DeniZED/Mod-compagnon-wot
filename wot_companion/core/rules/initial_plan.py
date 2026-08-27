@@ -51,6 +51,12 @@ class InitialPlanRule(Rule):
         map_info = kb.map_info(ctx.map_id) or {}
         role_info = kb.role_info(ctx.vehicle_role) or {}
 
+        # Suffixes prêts à l'emploi : évitent "Ruinberg None" (spawn absent) et
+        # la répétition "champ/foret (champ/foret)" quand l'ancre == le flanc.
+        spawn_suffix = (" cote %s" % ctx.spawn) if ctx.spawn else ""
+        anchor = plan.anchor
+        anchor_suffix = (" (%s)" % anchor) if anchor and anchor != flank_label else ""
+
         return [CandidateAdvice(
             rule_id=self.id,
             category=AdviceCategory.INITIAL_PLAN,
@@ -67,9 +73,11 @@ class InitialPlanRule(Rule):
                 "plan_id": plan.plan_id,
                 "map_label": map_info.get("label", ctx.map_id),
                 "spawn": ctx.spawn,
+                "spawn_suffix": spawn_suffix,
                 "flank": plan.flank,
                 "flank_label": flank_label,
                 "anchor": plan.anchor,
+                "anchor_suffix": anchor_suffix,
                 "aggression": plan.aggression,
                 "risk": plan.risk,
                 "role_label": role_info.get("label", ctx.vehicle_role),

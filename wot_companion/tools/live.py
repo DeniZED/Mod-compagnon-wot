@@ -76,11 +76,16 @@ def main(argv: list[str] | None = None) -> int:
     # Le fichier log capte TOUJOURS le detail (INFO) meme sans --verbose : c'est lui
     # qu'on inspecte pour comprendre pourquoi un conseil sort ou pas.
     try:
+        from logging.handlers import RotatingFileHandler
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+        # Append + rotation : on ne perd pas le log si tu relances le compagnon
+        # entre deux parties, sans laisser le fichier grossir sans fin.
+        fh = RotatingFileHandler(log_path, maxBytes=2_000_000, backupCount=1,
+                                 encoding="utf-8")
         fh.setLevel(logging.INFO)
         fh.setFormatter(fmt)
         root.addHandler(fh)
+        logging.getLogger("wot_companion").info("===== Nouveau lancement du compagnon =====")
     except OSError:
         log_path = None
 

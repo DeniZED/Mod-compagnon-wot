@@ -3,10 +3,10 @@
   "language": "fr",
   "templates": {
     "initial_plan": {
-      "coach": "{role_label} - {map_label} {spawn}. Privilegie {flank_label} ({anchor}) : {explanation}",
-      "commandant": "{map_label} {spawn}. Va {flank_label}. {anchor}.",
-      "detendu": "Sur {map_label} {spawn}, pars plutot {flank_label} ({anchor}). {explanation}",
-      "silencieux": "{map_label} {spawn} : {flank_label}."
+      "coach": "{role_label} - {map_label}{spawn_suffix}. Privilegie {flank_label}{anchor_suffix} : {explanation}",
+      "commandant": "{map_label}{spawn_suffix}. Va {flank_label}{anchor_suffix}.",
+      "detendu": "Sur {map_label}{spawn_suffix}, pars plutot {flank_label}{anchor_suffix}. {explanation}",
+      "silencieux": "{map_label}{spawn_suffix} : {flank_label}."
     },
     "initial_role_reminder": {
       "coach": "{role_label} : {role_reminder}",
