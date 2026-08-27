@@ -59,12 +59,30 @@ def main(argv: list[str] | None = None) -> int:
                              "click-through, pour verifier qu'il s'affiche par-dessus le jeu.")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--log-file", default=None,
+                        help="Fichier log du compagnon (defaut: wot_companion_live.log "
+                             "a cote de la DB). Contient le diagnostic des conseils.")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.INFO if args.verbose else logging.WARNING,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    log_path = Path(args.log_file) if args.log_file else \
+        Path(args.db).resolve().parent / "wot_companion_live.log"
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)          # les records INFO atteignent les handlers
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO if args.verbose else logging.WARNING)
+    console.setFormatter(fmt)
+    root.addHandler(console)
+    # Le fichier log capte TOUJOURS le detail (INFO) meme sans --verbose : c'est lui
+    # qu'on inspecte pour comprendre pourquoi un conseil sort ou pas.
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
+    except OSError:
+        log_path = None
 
     config_path = Path(args.config) if args.config else \
         Path(args.db).resolve().parent / DEFAULT_CONFIG_NAME
@@ -109,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
               f"({settings.tactical_kb_path})")
     else:
         print("Base tactique : aucune (option --tactical-kb pour l'activer)")
+    if log_path is not None:
+        print(f"Log compagnon : {log_path}  (envoie-le-moi pour diagnostic)")
     runner.run()
     return 0
 

@@ -15,6 +15,7 @@ plutot par la »).
 """
 from __future__ import annotations
 
+import logging
 import math
 
 from ...settings import AdviceCategory, Severity
@@ -22,6 +23,8 @@ from ..advice import CandidateAdvice
 from ..context.features import BattlePhase
 from ..maps import canonical_map_id
 from .base import Rule, RuleContext
+
+logger = logging.getLogger("wot_companion.rules.replay_zones")
 
 # Distance min. (m) au centre d'une zone pour juger que le joueur n'y est PAS.
 _AWAY_FACTOR = 1.8
@@ -44,6 +47,10 @@ _DIRS = [
 ]
 
 
+def _fmt(pos) -> str:
+    return "(%.0f,%.0f)" % (pos[0], pos[1]) if pos else "?"
+
+
 def _cardinal(dx: float, dz: float) -> str:
     ang = (math.degrees(math.atan2(dx, dz)) + 360.0) % 360.0
     best = min(_DIRS, key=lambda d: min(abs(ang - d[0]), 360.0 - abs(ang - d[0])))
@@ -59,23 +66,31 @@ class TacticalPositioningRule(Rule):
         kb = rc.tactical_kb
         b = rc.battle
         if kb is None or not getattr(kb, "clusters", None):
+            self._diag(rc, "base_absente_ou_vide")
             return []                          # pas de base chargee -> silence
         if b.own_pos is None or not b.map_id:
+            self._diag(rc, "sans_position_ou_carte own=%s map=%s"
+                       % (b.own_pos is not None, b.map_id))
             return []
         phase_key = _PHASE_KEY.get(rc.features.phase)
         if phase_key is None or rc.features.phase is BattlePhase.LATE:
+            self._diag(rc, "phase_late")
             return []                          # fin de partie : la survie prime
 
+        cmap = canonical_map_id(b.map_id)
         vclass = self._vehicle_class(b.vehicle_class)
         near = kb.nearest_clusters(
-            canonical_map_id(b.map_id), b.own_pos,
-            phase=phase_key, vehicle_class=vclass,
+            cmap, b.own_pos, phase=phase_key, vehicle_class=vclass,
             max_dist=_SEARCH_RADIUS_M, limit=1,
         )
         if not near:
+            self._diag(rc, "aucune_zone map=%s(%s) classe=%s phase=%s pos=%s"
+                       % (cmap, b.map_id, vclass, phase_key, _fmt(b.own_pos)))
             return []
         zone = near[0]
         if zone.confidence < _MIN_CONFIDENCE:
+            self._diag(rc, "zone_peu_fiable conf=%.2f (min %.2f) map=%s"
+                       % (zone.confidence, _MIN_CONFIDENCE, cmap))
             return []
 
         dx = zone.center[0] - b.own_pos[0]
@@ -83,7 +98,13 @@ class TacticalPositioningRule(Rule):
         dist = math.hypot(dx, dz)
         # Deja dans la zone de reference : rien a conseiller (evite le bruit).
         if dist <= zone.radius * _AWAY_FACTOR:
+            self._diag(rc, "deja_dans_la_zone dist=%.0f<=%.0f map=%s"
+                       % (dist, zone.radius * _AWAY_FACTOR, cmap))
             return []
+        logger.info("CANDIDAT zone map=%s classe=%s dir vers (%.0f,%.0f) dist=%.0fm "
+                    "conf=%.2f pop=%.2f n=%d", cmap, vclass, zone.center[0],
+                    zone.center[1], dist, zone.confidence, zone.popularity,
+                    zone.sample_size)
 
         direction = _cardinal(dx, dz)
         # Confiance du conseil : bornee par la confiance statistique de la zone.
@@ -101,6 +122,18 @@ class TacticalPositioningRule(Rule):
                 "sample": zone.sample_size,
             },
         )]
+
+    def __init__(self) -> None:
+        self._diag_last_s = -999.0
+        self._diag_last_msg = ""
+
+    def _diag(self, rc: RuleContext, msg: str) -> None:
+        """Trace throttlee (~15 s ou au changement) : pourquoi la regle se tait."""
+        t = rc.battle.elapsed_s
+        if msg != self._diag_last_msg or t - self._diag_last_s >= 15.0:
+            logger.info("SILENCE: %s", msg)
+            self._diag_last_s = t
+            self._diag_last_msg = msg
 
     @staticmethod
     def _vehicle_class(raw):
