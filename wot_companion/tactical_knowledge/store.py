@@ -28,15 +28,19 @@ def clusters_to_dict(clusters: Iterable[PositionCluster]) -> dict:
 
 def _cluster_to_json(c: PositionCluster) -> dict:
     d = asdict(c)
-    d["archetype"] = c.archetype.value
+    d["archetype"] = c.archetype.value if c.archetype is not None else None
+    d["vehicle_class"] = c.vehicle_class.value if c.vehicle_class is not None else None
     d["center"] = list(c.center)
     return d
 
 
 def _cluster_from_json(d: dict) -> PositionCluster:
+    arch = d.get("archetype")
+    vclass = d.get("vehicle_class")
     return PositionCluster(
         map_id=d["map_id"], spawn=d["spawn"], phase=d["phase"],
-        archetype=Archetype(d["archetype"]),
+        vehicle_class=VehicleClass(vclass) if vclass else None,
+        archetype=Archetype(arch) if arch else None,
         center=(float(d["center"][0]), float(d["center"][1])),
         radius=float(d["radius"]),
         popularity=float(d.get("popularity", 0.0)),
@@ -88,8 +92,12 @@ class TacticalKnowledgeBase:
         """Zones efficaces proches de `pos` sur `map_id`, triées par pertinence.
 
         Pertinence = efficacité pondérée par la proximité (les zones lointaines
-        pèsent moins). Filtres optionnels : phase, archétype exact, ou — plus
-        robuste entre vocabulaires — classe de véhicule (medium, heavy, ...).
+        pèsent moins) et la correspondance de classe. Filtres optionnels : phase,
+        archétype exact, classe de véhicule.
+
+        Correspondance de classe : une zone de la MÊME classe est préférée ; une
+        zone AGNOSTIQUE (classe None) reste éligible en repli (léger malus) ; une
+        zone d'une AUTRE classe est exclue. Sans classe demandée, tout est éligible.
         """
         x, z = pos
         scored = []
@@ -100,14 +108,20 @@ class TacticalKnowledgeBase:
                 continue
             if archetype is not None and c.archetype != archetype:
                 continue
-            if vehicle_class is not None and c.archetype.vehicle_class != vehicle_class:
-                continue
+            class_factor = 1.0
+            if vehicle_class is not None:
+                if c.vehicle_class == vehicle_class:
+                    class_factor = 1.0
+                elif c.vehicle_class is None:
+                    class_factor = 0.75          # zone agnostique : repli acceptable
+                else:
+                    continue                     # autre classe : hors sujet
             dx, dz = c.center[0] - x, c.center[1] - z
             dist = (dx * dx + dz * dz) ** 0.5
             if dist > max_dist:
                 continue
             proximity = 1.0 - dist / max_dist
-            relevance = c.effectiveness * (0.4 + 0.6 * proximity) * c.confidence
+            relevance = c.effectiveness * (0.4 + 0.6 * proximity) * c.confidence * class_factor
             scored.append((relevance, dist, c))
         scored.sort(key=lambda t: (-t[0], t[1]))
         return [c for _, _, c in scored[:limit]]

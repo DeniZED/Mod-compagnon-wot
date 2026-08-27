@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from wot_companion.replays.parse import ReplayDataset, ReplaySummary, VehicleResult
-from wot_companion.tactical_knowledge.aggregate import (
-    build_position_clusters, default_classifier, phase_at)
-from wot_companion.tactical_knowledge.models import Archetype
+from wot_companion.tactical_knowledge.aggregate import build_position_clusters, phase_at
+from wot_companion.tactical_knowledge.classify import default_class_of
+from wot_companion.tactical_knowledge.models import Archetype, VehicleClass
 
 
 def test_phase_at_bounds():
@@ -13,10 +13,10 @@ def test_phase_at_bounds():
     assert phase_at(481) == "late"
 
 
-def test_default_classifier_known_and_unknown():
-    assert default_classifier("usa:A179_Black_Rock") == Archetype.HULL_DOWN_HEAVY
-    assert default_classifier("inconnu:X") is None
-    assert default_classifier(None) is None
+def test_default_class_known_and_unknown():
+    assert default_class_of("usa:A179_Black_Rock") == VehicleClass.HEAVY
+    assert default_class_of("inconnu:X") is None       # -> zone agnostique
+    assert default_class_of(None) is None
 
 
 def _dataset(map_id, result, vehicles, trajectories):
@@ -42,17 +42,24 @@ def test_build_clusters_groups_by_cell_phase_archetype():
     top = clusters[0]
     # map_id canonicalisé (08_ruinberg -> ruinberg) pour coller au live.
     assert top.map_id == "ruinberg" and top.phase == "early"
-    assert top.archetype == Archetype.HULL_DOWN_HEAVY
+    assert top.vehicle_class == VehicleClass.HEAVY
+    assert top.archetype == Archetype.HULL_DOWN_HEAVY   # métadonnée votée
     assert top.spawn == "team1"
     assert 90 <= top.center[0] <= 130 and top.center[1] == 200.0
     assert top.sample_size >= 3 and 0.0 < top.confidence <= 1.0
     assert top.survival_score == 1.0
 
 
-def test_unknown_tag_is_ignored():
+def test_unknown_tag_feeds_class_agnostic_zone():
+    # Char non classé : plus ignoré. Il alimente une zone AGNOSTIQUE (classe None)
+    # -> aucun replay perdu (« les gagnants jouent ici »).
+    traj = [(float(t), 100.0, 200.0 + t * 0.1) for t in range(0, 60, 5)]
     v = _veh(9, "mystere:Z", team=1, dmg=5000)
-    ds = _dataset("map", "victory", {9: v}, {9: [(0.0, 1.0, 1.0), (5.0, 2.0, 2.0)]})
-    assert build_position_clusters([ds]) == []
+    ds = _dataset("map", "victory", {9: v}, {9: traj})
+    clusters = build_position_clusters([ds], min_samples=3)
+    assert clusters
+    assert all(c.vehicle_class is None for c in clusters)
+    assert all(c.archetype is None for c in clusters)
 
 
 def test_min_samples_filters_sparse_cells():
@@ -71,4 +78,4 @@ def test_winners_only_excludes_losing_team():
     clusters = build_position_clusters([ds], winners_only=True, min_samples=3)
     assert clusters
     assert all(c.spawn == "team1" for c in clusters)
-    assert all(c.archetype == Archetype.HULL_DOWN_HEAVY for c in clusters)
+    assert all(c.vehicle_class == VehicleClass.HEAVY for c in clusters)

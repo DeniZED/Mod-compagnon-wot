@@ -136,14 +136,21 @@ class VehicleTacticalProfile:
 
 @dataclass
 class PositionCluster:
-    """Zone statistiquement efficace pour un char/archétype (§9). Agrégée depuis
-    des replays. Jamais une position ennemie réelle."""
+    """Zone statistiquement efficace (§9), agrégée depuis des replays. Jamais une
+    position ennemie réelle.
+
+    Le regroupement se fait par CLASSE de véhicule (medium, heavy, ...), signal
+    fiablement obtenu côté live. `vehicle_class = None` = zone AGNOSTIQUE de classe
+    (le char n'a pas pu être classé au build) : « les gagnants jouent ici », utile
+    comme repli quand aucune zone spécifique à la classe n'existe. `archetype` reste
+    une métadonnée optionnelle (affinage futur), non requise pour le clustering."""
     map_id: str
     spawn: str
     phase: str
-    archetype: Archetype
     center: XZ
     radius: float
+    vehicle_class: Optional[VehicleClass] = None
+    archetype: Optional[Archetype] = None
     popularity: float = 0.0      # fréquence chez les bons joueurs
     effectiveness: float = 0.0
     damage_score: float = 0.0
@@ -151,7 +158,7 @@ class PositionCluster:
     survival_score: float = 0.0
     sample_size: int = 0
     confidence: float = 0.0
-    vehicle_id: Optional[str] = None   # cluster spécifique à un char, sinon archétype
+    vehicle_id: Optional[str] = None   # cluster spécifique à un char, sinon classe
 
     def __post_init__(self) -> None:
         if self.radius < 0:

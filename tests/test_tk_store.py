@@ -9,7 +9,8 @@ from wot_companion.tactical_knowledge.store import (
 def _cluster(map_id="m", center=(100.0, 200.0), phase="early",
              arch=Archetype.HULL_DOWN_HEAVY, eff=0.8, conf=1.0):
     return PositionCluster(
-        map_id=map_id, spawn="team1", phase=phase, archetype=arch,
+        map_id=map_id, spawn="team1", phase=phase,
+        vehicle_class=arch.vehicle_class if arch else None, archetype=arch,
         center=center, radius=20.0, popularity=0.5, effectiveness=eff,
         damage_score=eff, assist_score=0.0, survival_score=0.6,
         sample_size=10, confidence=conf)
@@ -56,6 +57,43 @@ def test_nearest_ranks_effective_and_confident_first():
     ])
     near = tk.nearest_clusters("m", (100.0, 100.0), limit=3)
     assert near[0].effectiveness == 0.9 and near[0].confidence == 1.0
+
+
+def test_agnostic_zone_is_fallback_but_specific_class_preferred():
+    from wot_companion.tactical_knowledge.models import Archetype, VehicleClass
+    specific = PositionCluster(
+        map_id="m", spawn="team1", phase="early",
+        vehicle_class=VehicleClass.HEAVY, archetype=Archetype.HULL_DOWN_HEAVY,
+        center=(100.0, 100.0), radius=20.0, effectiveness=0.8, confidence=1.0)
+    agnostic = PositionCluster(
+        map_id="m", spawn="team1", phase="early",
+        vehicle_class=None, archetype=None,
+        center=(101.0, 101.0), radius=20.0, effectiveness=0.8, confidence=1.0)
+    tk = TacticalKnowledgeBase([agnostic, specific])
+    near = tk.nearest_clusters("m", (100.0, 100.0), vehicle_class=VehicleClass.HEAVY)
+    assert near[0].vehicle_class == VehicleClass.HEAVY   # spécifique préféré
+    assert len(near) == 2                                # agnostique reste éligible
+
+
+def test_other_class_zone_excluded():
+    from wot_companion.tactical_knowledge.models import Archetype, VehicleClass
+    light = PositionCluster(
+        map_id="m", spawn="team1", phase="early",
+        vehicle_class=VehicleClass.LIGHT, archetype=Archetype.ACTIVE_SCOUT,
+        center=(100.0, 100.0), radius=20.0, effectiveness=0.9, confidence=1.0)
+    tk = TacticalKnowledgeBase([light])
+    assert tk.nearest_clusters("m", (100.0, 100.0),
+                               vehicle_class=VehicleClass.HEAVY) == []
+
+
+def test_agnostic_roundtrip(tmp_path):
+    p = tmp_path / "tk.json"
+    c = PositionCluster(map_id="m", spawn="team1", phase="mid",
+                        vehicle_class=None, archetype=None,
+                        center=(1.0, 2.0), radius=20.0, confidence=0.5)
+    save_clusters(str(p), [c])
+    back = load_clusters(str(p))
+    assert back[0].vehicle_class is None and back[0].archetype is None
 
 
 def test_app_loads_kb_from_settings(tmp_path):

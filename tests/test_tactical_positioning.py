@@ -23,7 +23,8 @@ def _rc(kb, own=(0.0, 0.0), map_id="ruinberg", vclass="medium", t=60.0):
 def _zone(center, map_id="ruinberg", phase="early", arch=Archetype.SNIPER_MEDIUM,
           conf=1.0, pop=0.8):
     return PositionCluster(
-        map_id=map_id, spawn="team1", phase=phase, archetype=arch,
+        map_id=map_id, spawn="team1", phase=phase,
+        vehicle_class=arch.vehicle_class, archetype=arch,
         center=center, radius=20.0, popularity=pop, effectiveness=0.9,
         damage_score=0.9, assist_score=0.0, survival_score=0.7,
         sample_size=30, confidence=conf)
