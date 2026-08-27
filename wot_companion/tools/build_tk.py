@@ -77,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--winners-only", action="store_true",
                     help="N'apprendre que de l'équipe gagnante.")
     ap.add_argument("--min-samples", type=int, default=3)
+    ap.add_argument("--min-vehicles", type=int, default=1,
+                    help="Zones validées par < N chars distincts écartées "
+                         "(8+ recommandé à grande échelle pour un fichier léger).")
     ap.add_argument("--limit", type=int, default=None,
                     help="Ne traiter que les N premiers replays (test rapide).")
     ap.add_argument("--progress-every", type=int, default=200)
@@ -93,7 +96,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         clusters = build_position_clusters(
             datasets, cell_size=args.cell_size, performers_per_battle=args.performers,
-            winners_only=args.winners_only, min_samples=args.min_samples)
+            winners_only=args.winners_only, min_samples=args.min_samples,
+            min_vehicles=args.min_vehicles)
     except KeyboardInterrupt:
         print("\nInterrompu — rien n'a été écrit.")
         return 1
@@ -105,9 +109,10 @@ def main(argv: list[str] | None = None) -> int:
     save_clusters(args.out, clusters)
     maps = sorted({c.map_id for c in clusters})
     el = time.time() - t0
+    size_mb = Path(args.out).stat().st_size / 1e6
     print("\n%d replays exploités (%d ignorés, %d erreurs) en %.0fs"
           % (stats.ok, stats.skip, stats.err, el))
-    print("-> %d zones sur %d carte(s) : %s" % (len(clusters), len(maps), ", ".join(maps)))
+    print("-> %d zones sur %d carte(s) — fichier %.1f Mo" % (len(clusters), len(maps), size_mb))
     print("Base écrite : %s" % args.out)
     return 0
 

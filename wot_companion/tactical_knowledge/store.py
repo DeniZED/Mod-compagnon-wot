@@ -70,6 +70,11 @@ class TacticalKnowledgeBase:
 
     def __init__(self, clusters: Optional[Iterable[PositionCluster]] = None) -> None:
         self.clusters: List[PositionCluster] = list(clusters or [])
+        # Index par carte : à 100k+ zones, un scan complet par tick serait trop
+        # lent en live. On ne balaie que les zones de la carte courante.
+        self._by_map: dict[str, List[PositionCluster]] = {}
+        for c in self.clusters:
+            self._by_map.setdefault(c.map_id, []).append(c)
 
     @classmethod
     def load(cls, path: str | Path) -> "TacticalKnowledgeBase":
@@ -101,9 +106,7 @@ class TacticalKnowledgeBase:
         """
         x, z = pos
         scored = []
-        for c in self.clusters:
-            if c.map_id != map_id:
-                continue
+        for c in self._by_map.get(map_id, ()):   # index carte : balayage ciblé
             if phase is not None and c.phase != phase:
                 continue
             if archetype is not None and c.archetype != archetype:

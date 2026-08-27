@@ -81,6 +81,7 @@ def build_position_clusters(
     performers_per_battle: int = 5,
     winners_only: bool = False,
     min_samples: int = 3,
+    min_vehicles: int = 1,
     full_sample_size: int = 40,
 ) -> List[PositionCluster]:
     """Construit les PositionCluster depuis un lot de replays déjà parsés.
@@ -90,6 +91,9 @@ def build_position_clusters(
     - `performers_per_battle` : combien de meilleurs chars retenir par partie.
     - `winners_only` : n'apprendre que de l'équipe gagnante.
     - `min_samples` : nb minimal de points pour émettre une zone (anti-bruit).
+    - `min_vehicles` : nb minimal de chars DISTINCTS ayant validé la zone. À grande
+      échelle, élaguer les zones à 1-2 chars réduit massivement le fichier sans
+      perte utile (la règle ignore de toute façon les zones peu confiantes).
     - `full_sample_size` : nb de chars distincts au-delà duquel la confiance sature.
     """
     cells: Dict[Tuple[str, str, Optional[VehicleClass], str, int, int], _Cell] = \
@@ -134,7 +138,7 @@ def build_position_clusters(
     clusters: List[PositionCluster] = []
     for key, c in cells.items():
         (map_id, spawn, vclass, phase, _gx, _gz) = key
-        if c.points < min_samples or c.weight <= 0:
+        if c.points < min_samples or c.weight <= 0 or c.n_veh < min_vehicles:
             continue
         cx, cz = c.sx / c.weight, c.sz / c.weight
         n_veh = c.n_veh or 1
