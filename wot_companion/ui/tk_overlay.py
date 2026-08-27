@@ -51,6 +51,11 @@ class TkOverlay(OverlaySink):
         self._base_y = 0
         self._w = 470
         self._h = 210
+        #: radar tactique (2e fenetre, optionnelle)
+        self._radar_win = None
+        self._radar_canvas = None
+        self._radar_state: dict | None = None
+        self._radar_size = 210
         #: callback(offset_x, offset_y) pour persister la position apres deplacement.
         self.persist_position: Callable[[int, int], None] | None = None
 
@@ -71,6 +76,11 @@ class TkOverlay(OverlaySink):
     def notify_state(self, hp_ratio: float | None = None) -> None:
         if hp_ratio is not None:
             self._queue.put({"state_hp_ratio": hp_ratio})
+
+    def notify_radar(self, state: dict) -> None:
+        """Instantané radar (position, zones, alliés/ennemis spottés)."""
+        if self.settings.ui.radar_enabled:
+            self._queue.put({"radar": state})
 
     def show_garage(self, text: str) -> None:
         self._queue.put({
@@ -118,6 +128,9 @@ class TkOverlay(OverlaySink):
             win32 = self._set_click_through(self.settings.ui.click_through)
         self._draw_idle(startup=True)
 
+        if self.settings.ui.radar_enabled:
+            self._build_radar_window(tk, root, x, y, sw, sh)
+
         print("[Overlay] fenetre %dx%d @ (%d,%d) | ancrage=%s | images=%d | %s"
               % (self._w, self._h, x, y, self.settings.ui.anchor, n, win32))
         print("[Overlay] Deplacer : maintiens Ctrl et glisse la carte (relache pour fixer).")
@@ -129,6 +142,105 @@ class TkOverlay(OverlaySink):
             root.mainloop()
         except KeyboardInterrupt:
             pass
+
+    # ---- Radar tactique (2e fenetre pass-through) --------------------------
+    def _build_radar_window(self, tk, root, main_x, main_y, sw, sh) -> None:
+        size = self._radar_size
+        # Sous l'overlay principal ; recadre a l'ecran.
+        rx = main_x + self._w - size
+        ry = main_y + self._h + 8
+        if ry + size > sh:
+            ry = max(0, main_y - size - 8)
+        win = tk.Toplevel(root)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        bg = _CARD if self.debug_opaque else _KEY
+        win.configure(bg=bg)
+        win.geometry("%dx%d+%d+%d" % (size, size, rx, ry))
+        cv = tk.Canvas(win, width=size, height=size, bg=bg,
+                       highlightthickness=0, bd=0)
+        cv.pack(fill="both", expand=True)
+        self._radar_win = win
+        self._radar_canvas = cv
+        win.update_idletasks()
+        if not self.debug_opaque:
+            try:
+                self._layer_window(win, self.settings.ui.click_through)
+            except Exception:
+                logger.exception("radar : layering win32 a echoue")
+        self._draw_radar_idle()
+
+    def _layer_window(self, win, click_through: bool) -> str:
+        import ctypes
+        from ctypes import wintypes
+        GWL_EXSTYLE = -20
+        WS_EX_LAYERED = 0x00080000
+        WS_EX_TRANSPARENT = 0x00000020
+        WS_EX_TOOLWINDOW = 0x00000080
+        LWA_COLORKEY = 0x00000001
+        u = ctypes.windll.user32
+        h = u.GetAncestor(win.winfo_id(), 2) or win.winfo_id()
+        hwnd = wintypes.HWND(h)
+        u.GetWindowLongW.restype = ctypes.c_long
+        base = WS_EX_LAYERED | WS_EX_TOOLWINDOW
+        if click_through:
+            base |= WS_EX_TRANSPARENT
+        cur = u.GetWindowLongW(hwnd, GWL_EXSTYLE) & ~WS_EX_TRANSPARENT
+        u.SetWindowLongW(hwnd, GWL_EXSTYLE, cur | base)
+        u.SetLayeredWindowAttributes(hwnd, _KEY_COLORREF, 255, LWA_COLORKEY)
+        return "radar layered"
+
+    def _draw_radar_idle(self) -> None:
+        if self._radar_canvas is None:
+            return
+        cv = self._radar_canvas
+        cv.delete("all")
+        s = self._radar_size
+        cv.create_rectangle(2, 2, s - 2, s - 2, outline="#3a4d33", width=2)
+        cv.create_text(s // 2, s // 2, text="RADAR", fill="#3a4d33",
+                       font=("Segoe UI", 9, "bold"))
+
+    def _draw_radar(self, state: dict) -> None:
+        from .radar import RadarProjection
+        self._radar_state = state
+        cv = self._radar_canvas
+        if cv is None:
+            return
+        cv.delete("all")
+        s = self._radar_size
+        ext = state.get("extent") or [-500, 500, -500, 500]
+        proj = RadarProjection(ext[0], ext[1], ext[2], ext[3], s, s, pad=10)
+        # Cadre + croix centrale discrète.
+        cv.create_rectangle(2, 2, s - 2, s - 2, outline="#3a4d33", width=2)
+        # Zones conseillées (halo vert) / danger (rouge).
+        for z in state.get("zones", []):
+            cx, cz = z["center"]
+            px, py = proj.to_px((cx, cz))
+            col = "#6fcf4f" if z.get("kind") == "good" else "#d9534f"
+            r = 10
+            cv.create_oval(px - r, py - r, px + r, py + r, outline=col, width=2)
+            cv.create_oval(px - 2, py - 2, px + 2, py + 2, fill=col, outline=col)
+        # Route (itinéraire) vers la zone conseillée.
+        route = state.get("route") or []
+        if len(route) == 2:
+            ax, ay = proj.to_px(tuple(route[0]))
+            bx, by = proj.to_px(tuple(route[1]))
+            cv.create_line(ax, ay, bx, by, fill="#6fcf4f", width=2, arrow="last",
+                           dash=(4, 3))
+        # Alliés (bleu) et ennemis spottés (rouge).
+        for a in state.get("allies", []):
+            px, py = proj.to_px(tuple(a))
+            cv.create_oval(px - 2, py - 2, px + 2, py + 2, fill="#4f9fd9", outline="")
+        for e in state.get("enemies", []):
+            px, py = proj.to_px(tuple(e))
+            cv.create_oval(px - 3, py - 3, px + 3, py + 3, fill="#d9534f",
+                           outline="#ffffff")
+        # Position propre (triangle vert vif).
+        own = state.get("own")
+        if own:
+            px, py = proj.to_px(tuple(own))
+            cv.create_polygon(px, py - 6, px - 5, py + 5, px + 5, py + 5,
+                              fill="#a6ff7a", outline="#0d1a08")
 
     def _anchor_base(self, sw, sh):
         m = 16
@@ -270,6 +382,8 @@ class TkOverlay(OverlaySink):
                 msg = self._queue.get_nowait()
                 if msg.get("clear"):
                     self._draw_idle()
+                elif "radar" in msg:
+                    self._draw_radar(msg["radar"])
                 elif "state_hp_ratio" in msg:
                     self._update_condition(msg["state_hp_ratio"])
                 else:

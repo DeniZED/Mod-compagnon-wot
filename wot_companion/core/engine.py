@@ -131,6 +131,10 @@ class AdviceEngine:
         self.last_features = features   # expose pour la trace tactique (V2)
         self.arbiter.set_clock(self.context.elapsed_s)
 
+        # Radar tactique (optionnel) : instantané position + zones conseillées.
+        if self.overlay is not None and hasattr(self.overlay, "notify_radar"):
+            self._push_radar(features)
+
         rc = RuleContext(
             battle=self.context, features=features, knowledge=self.knowledge,
             session_objective=self.settings.session_objective,
@@ -180,6 +184,44 @@ class AdviceEngine:
         if candidates or advice is not None:
             self.journal.record(entry)
         return advice
+
+    def _push_radar(self, features) -> None:
+        """Construit l'instantané radar et le pousse à l'overlay (best-effort)."""
+        from ..core.maps import canonical_map_id
+        from ..ui.radar import RadarZone, bbox, build_radar_state
+        from ..tactical_knowledge.models import VehicleClass
+        from .context.features import BattlePhase
+        ctx = self.context
+        if ctx is None or ctx.own_pos is None:
+            return
+        cmap = canonical_map_id(ctx.map_id)
+        phase_key = {BattlePhase.EARLY: "early", BattlePhase.MID: "mid",
+                     BattlePhase.LATE: "late"}.get(features.phase)
+        vclass = None
+        if ctx.vehicle_class:
+            try:
+                vclass = VehicleClass(str(ctx.vehicle_class).lower())
+            except ValueError:
+                vclass = None
+        zones = []
+        kb = self.tactical_kb
+        if kb is not None and cmap and phase_key:
+            for z in kb.nearest_clusters(cmap, ctx.own_pos, phase=phase_key,
+                                         vehicle_class=vclass, max_dist=400.0, limit=3):
+                zones.append(RadarZone(center=z.center, radius=z.radius, kind="good"))
+        extent = None
+        if kb is not None and cmap:
+            extent = kb.map_extent(cmap)
+        if extent is None:
+            extent = bbox([ctx.own_pos] + list(ctx.ally_positions)
+                          + list(ctx.enemy_positions_spotted))
+        state = build_radar_state(
+            extent=extent, own=ctx.own_pos, allies=ctx.ally_positions,
+            enemies_spotted=ctx.enemy_positions_spotted, good_zones=zones)
+        try:
+            self.overlay.notify_radar(state.as_dict())
+        except Exception:
+            logger.exception("notify_radar overlay a echoue")
 
     def feed(self, event: RawEvent) -> AdviceObject | None:
         """Raccourci : applique un evenement puis evalue."""

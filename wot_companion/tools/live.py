@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Decalage vertical de l'overlay en pixels (+ vers le bas).")
     parser.add_argument("--no-click-through", action="store_true",
                         help="Rend l'overlay cliquable (desactive le click-through).")
+    parser.add_argument("--radar", dest="radar", action="store_true", default=None,
+                        help="Active le radar tactique (2e fenetre). Memorise.")
+    parser.add_argument("--no-radar", dest="radar", action="store_false",
+                        help="Desactive le radar tactique.")
     parser.add_argument("--overlay-debug", action="store_true",
                         help="Overlay OPAQUE (diagnostic) : sans transparence ni "
                              "click-through, pour verifier qu'il s'affiche par-dessus le jeu.")
@@ -105,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.overlay is not None:
         settings.ui.overlay_kind = args.overlay
     overlay_kind = settings.ui.overlay_kind
+    if args.radar is not None:
+        settings.ui.radar_enabled = args.radar
     if args.overlay_anchor is not None:
         settings.ui.anchor = args.overlay_anchor
     if args.overlay_x is not None:

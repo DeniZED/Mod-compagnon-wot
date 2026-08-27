@@ -23,6 +23,14 @@ def test_roundtrip_preserves_preferences(tmp_path):
     assert loaded.ui.max_bubble_chars == 100
 
 
+def test_radar_enabled_persisted(tmp_path):
+    s = Settings()
+    s.ui.radar_enabled = True
+    path = tmp_path / "cfg.json"
+    save_settings(s, path)
+    assert load_settings(path).ui.radar_enabled is True
+
+
 def test_stale_config_reenables_new_categories(tmp_path):
     # Ancienne config (opt-in) sans POSITIONING/REACTION -> ne doit PAS les éteindre.
     path = tmp_path / "cfg.json"

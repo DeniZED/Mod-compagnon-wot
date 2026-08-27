@@ -42,6 +42,7 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
             "text_scale": s.ui.text_scale,
             "click_through": s.ui.click_through,
             "overlay_kind": s.ui.overlay_kind,
+            "radar_enabled": s.ui.radar_enabled,
         },
         "tactical_kb_path": s.tactical_kb_path,
         "wargaming_api_enabled": s.wargaming_api_enabled,
@@ -88,6 +89,7 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
             text_scale=float(ui.get("text_scale", s.ui.text_scale)),
             click_through=bool(ui.get("click_through", s.ui.click_through)),
             overlay_kind=str(ui.get("overlay_kind", s.ui.overlay_kind)),
+            radar_enabled=bool(ui.get("radar_enabled", s.ui.radar_enabled)),
         )
 
     if "tactical_kb_path" in cfg:

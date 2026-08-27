@@ -75,6 +75,23 @@ class TacticalKnowledgeBase:
         self._by_map: dict[str, List[PositionCluster]] = {}
         for c in self.clusters:
             self._by_map.setdefault(c.map_id, []).append(c)
+        self._extent_cache: dict[str, tuple] = {}
+
+    def map_extent(self, map_id: str):
+        """Emprise (xmin,xmax,zmin,zmax) des zones d'une carte, ou None si inconnue.
+
+        Sert d'échelle au radar : la boîte englobante des zones ≈ l'aire jouable.
+        """
+        if map_id in self._extent_cache:
+            return self._extent_cache[map_id]
+        zones = self._by_map.get(map_id)
+        if not zones:
+            return None
+        xs = [c.center[0] for c in zones]
+        zs = [c.center[1] for c in zones]
+        ext = (min(xs), max(xs), min(zs), max(zs))
+        self._extent_cache[map_id] = ext
+        return ext
 
     @classmethod
     def load(cls, path: str | Path) -> "TacticalKnowledgeBase":

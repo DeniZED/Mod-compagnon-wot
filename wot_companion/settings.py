@@ -81,6 +81,7 @@ class UISettings:
     text_scale: float = 1.0
     click_through: bool = True         # laisse passer les clics (Windows)
     overlay_kind: str = "console"      # console / tk / none — memorise entre lancements
+    radar_enabled: bool = False        # radar tactique (2e fenetre) — opt-in
     color_scheme: tuple[str, ...] = ("normal", "attention", "critical", "positive")
 
 
