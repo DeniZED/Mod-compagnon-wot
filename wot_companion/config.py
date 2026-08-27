@@ -38,6 +38,7 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
             "text_scale": s.ui.text_scale,
             "click_through": s.ui.click_through,
         },
+        "tactical_kb_path": s.tactical_kb_path,
         "wargaming_api_enabled": s.wargaming_api_enabled,
         "llm_enabled": s.llm_enabled,
         "telemetry_enabled": s.telemetry_enabled,
@@ -78,6 +79,10 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
             text_scale=float(ui.get("text_scale", s.ui.text_scale)),
             click_through=bool(ui.get("click_through", s.ui.click_through)),
         )
+
+    if "tactical_kb_path" in cfg:
+        v = cfg["tactical_kb_path"]
+        s.tactical_kb_path = str(v) if v else None
 
     for flag in ("wargaming_api_enabled", "llm_enabled", "telemetry_enabled"):
         if flag in cfg:

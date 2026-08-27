@@ -23,6 +23,15 @@ def test_roundtrip_preserves_preferences(tmp_path):
     assert loaded.ui.max_bubble_chars == 100
 
 
+def test_tactical_kb_path_persisted(tmp_path):
+    path = tmp_path / "cfg.json"
+    save_settings(Settings(tactical_kb_path="C:/wot/tk_base.json"), path)
+    assert load_settings(path).tactical_kb_path == "C:/wot/tk_base.json"
+    # chaine vide -> None (desactivation)
+    save_settings(Settings(tactical_kb_path=None), path)
+    assert load_settings(path).tactical_kb_path is None
+
+
 def test_missing_file_returns_defaults(tmp_path):
     s = load_settings(tmp_path / "absent.json")
     assert s.personality is Personality.COACH

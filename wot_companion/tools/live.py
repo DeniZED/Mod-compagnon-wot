@@ -37,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Chemin du fichier historique SQLite persistant.")
     parser.add_argument("--config", default=None,
                         help="Chemin du fichier de config (defaut: a cote de la DB).")
+    parser.add_argument("--tactical-kb", default=None,
+                        help="Chemin du JSON de zones (build_tk). Memorise : les "
+                             "conseils de placement issus des replays s'activent. "
+                             "Passer \"\" (vide) pour desactiver.")
     parser.add_argument("--overlay", choices=["console", "tk", "none"], default="console",
                         help="Affichage des conseils : console (defaut), tk (overlay "
                              "graphique in-game), none.")
@@ -72,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
         settings.intensity = args.intensity
     if args.objective is not None:
         settings.session_objective = args.objective or None
+    if args.tactical_kb is not None:
+        settings.tactical_kb_path = args.tactical_kb or None
     if args.overlay_anchor is not None:
         settings.ui.anchor = args.overlay_anchor
     if args.overlay_x is not None:
@@ -90,6 +96,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Config : {config_path}  (personnalite={settings.personality.value}, "
           f"intensite={settings.intensity}, objectif={settings.session_objective}, "
           f"overlay={args.overlay})")
+    kb = runner.app.engine.tactical_kb
+    if settings.tactical_kb_path:
+        print(f"Base tactique : {len(kb.clusters)} zones chargees "
+              f"({settings.tactical_kb_path})")
+    else:
+        print("Base tactique : aucune (option --tactical-kb pour l'activer)")
     runner.run()
     return 0
 
