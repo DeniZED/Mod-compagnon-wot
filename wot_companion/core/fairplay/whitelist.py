@@ -22,7 +22,7 @@ WHITELIST: dict[str, frozenset[str]] = {
     EventType.BATTLE_END.value: frozenset({"battle_id", "reason"}),
     # Contexte propre au joueur
     EventType.PLAYER_VEHICLE.value: frozenset({"vehicle_id", "tier", "class", "role"}),
-    EventType.MAP_INFO.value: frozenset({"map_id"}),
+    EventType.MAP_INFO.value: frozenset({"map_id", "bounds"}),
     EventType.SPAWN_INFO.value: frozenset({"spawn"}),
     # Composition connue au chargement : classes/tiers agreges uniquement.
     EventType.TEAM_COMPOSITION.value: frozenset({

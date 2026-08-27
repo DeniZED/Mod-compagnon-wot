@@ -58,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="Active le radar tactique (2e fenetre). Memorise.")
     parser.add_argument("--no-radar", dest="radar", action="store_false",
                         help="Desactive le radar tactique.")
+    parser.add_argument("--radar-mode", choices=["overlay", "panel"], default=None,
+                        help="overlay = marqueurs transparents SUR la minimap (defaut) ; "
+                             "panel = mini-carte autonome avec cadre. Memorise.")
+    parser.add_argument("--radar-size", type=int, default=None,
+                        help="Cote de la fenetre radar en px, a caler sur ta minimap. Memorise.")
     parser.add_argument("--overlay-debug", action="store_true",
                         help="Overlay OPAQUE (diagnostic) : sans transparence ni "
                              "click-through, pour verifier qu'il s'affiche par-dessus le jeu.")
@@ -111,6 +116,10 @@ def main(argv: list[str] | None = None) -> int:
     overlay_kind = settings.ui.overlay_kind
     if args.radar is not None:
         settings.ui.radar_enabled = args.radar
+    if args.radar_mode is not None:
+        settings.ui.radar_mode = args.radar_mode
+    if args.radar_size is not None:
+        settings.ui.radar_size = max(120, args.radar_size)
     if args.overlay_anchor is not None:
         settings.ui.anchor = args.overlay_anchor
     if args.overlay_x is not None:

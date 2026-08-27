@@ -210,7 +210,13 @@ class AdviceEngine:
                                          vehicle_class=vclass, max_dist=400.0, limit=3):
                 zones.append(RadarZone(center=z.center, radius=z.radius, kind="good"))
         extent = None
-        if kb is not None and cmap:
+        # 1) Bornes EXACTES de l'arène (mêmes que la minimap du jeu) -> alignement
+        #    parfait des marqueurs sur la minimap. minX,minZ,maxX,maxZ -> xmin,xmax,zmin,zmax.
+        if ctx.map_bounds is not None:
+            mnx, mnz, mxx, mxz = ctx.map_bounds
+            extent = (mnx, mxx, mnz, mxz)
+        # 2) sinon emprise des zones connues, 3) sinon nuage de points courant.
+        if extent is None and kb is not None and cmap:
             extent = kb.map_extent(cmap)
         if extent is None:
             extent = bbox([ctx.own_pos] + list(ctx.ally_positions)

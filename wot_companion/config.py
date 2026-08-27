@@ -43,6 +43,10 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
             "click_through": s.ui.click_through,
             "overlay_kind": s.ui.overlay_kind,
             "radar_enabled": s.ui.radar_enabled,
+            "radar_mode": s.ui.radar_mode,
+            "radar_size": s.ui.radar_size,
+            "radar_offset_x": s.ui.radar_offset_x,
+            "radar_offset_y": s.ui.radar_offset_y,
         },
         "tactical_kb_path": s.tactical_kb_path,
         "wargaming_api_enabled": s.wargaming_api_enabled,
@@ -90,6 +94,10 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
             click_through=bool(ui.get("click_through", s.ui.click_through)),
             overlay_kind=str(ui.get("overlay_kind", s.ui.overlay_kind)),
             radar_enabled=bool(ui.get("radar_enabled", s.ui.radar_enabled)),
+            radar_mode=str(ui.get("radar_mode", s.ui.radar_mode)),
+            radar_size=int(ui.get("radar_size", s.ui.radar_size)),
+            radar_offset_x=int(ui.get("radar_offset_x", s.ui.radar_offset_x)),
+            radar_offset_y=int(ui.get("radar_offset_y", s.ui.radar_offset_y)),
         )
 
     if "tactical_kb_path" in cfg:

@@ -55,9 +55,13 @@ class TkOverlay(OverlaySink):
         self._radar_win = None
         self._radar_canvas = None
         self._radar_state: dict | None = None
-        self._radar_size = 210
+        self._radar_size = max(120, int(settings.ui.radar_size))
+        self._radar_base = (0, 0)      # position d'ancrage (avant offset radar)
+        self._radar_drag = None
         #: callback(offset_x, offset_y) pour persister la position apres deplacement.
         self.persist_position: Callable[[int, int], None] | None = None
+        #: idem pour le radar (position propre).
+        self.persist_radar: Callable[[int, int], None] | None = None
 
     # ---- API OverlaySink (thread moteur) -----------------------------------
     def show(self, displayed: DisplayedAdvice) -> None:
@@ -146,11 +150,12 @@ class TkOverlay(OverlaySink):
     # ---- Radar tactique (2e fenetre pass-through) --------------------------
     def _build_radar_window(self, tk, root, main_x, main_y, sw, sh) -> None:
         size = self._radar_size
-        # Sous l'overlay principal ; recadre a l'ecran.
-        rx = main_x + self._w - size
-        ry = main_y + self._h + 8
-        if ry + size > sh:
-            ry = max(0, main_y - size - 8)
+        # Ancrage par defaut : coin bas-droit (la ou est la minimap). L'offset
+        # radar (Ctrl + glisser) permet de le caler pile sur la minimap.
+        self._radar_base = (sw - size - 16, sh - size - 16)
+        rx = self._radar_base[0] + self.settings.ui.radar_offset_x
+        ry = self._radar_base[1] + self.settings.ui.radar_offset_y
+        rx, ry = self._clamp_on_screen(rx, ry)
         win = tk.Toplevel(root)
         win.overrideredirect(True)
         win.attributes("-topmost", True)
@@ -160,6 +165,9 @@ class TkOverlay(OverlaySink):
         cv = tk.Canvas(win, width=size, height=size, bg=bg,
                        highlightthickness=0, bd=0)
         cv.pack(fill="both", expand=True)
+        cv.bind("<ButtonPress-1>", self._on_radar_press)
+        cv.bind("<B1-Motion>", self._on_radar_drag)
+        cv.bind("<ButtonRelease-1>", self._on_radar_release)
         self._radar_win = win
         self._radar_canvas = cv
         win.update_idletasks()
@@ -169,6 +177,33 @@ class TkOverlay(OverlaySink):
             except Exception:
                 logger.exception("radar : layering win32 a echoue")
         self._draw_radar_idle()
+
+    def _radar_movable(self) -> bool:
+        """Le radar se deplace/redimensionne quand Ctrl est maintenu (comme la bulle)."""
+        return self._move_mode
+
+    def _on_radar_press(self, e):
+        if self._radar_movable() and self._radar_win is not None:
+            self._radar_drag = (e.x_root, e.y_root,
+                                self._radar_win.winfo_x(), self._radar_win.winfo_y())
+
+    def _on_radar_drag(self, e):
+        if self._radar_drag and self._radar_win is not None:
+            rx, ry, wx, wy = self._radar_drag
+            self._radar_win.geometry("+%d+%d" % (wx + (e.x_root - rx), wy + (e.y_root - ry)))
+
+    def _on_radar_release(self, e):
+        if self._radar_drag is None or self._radar_win is None:
+            return
+        self._radar_drag = None
+        ox = self._radar_win.winfo_x() - self._radar_base[0]
+        oy = self._radar_win.winfo_y() - self._radar_base[1]
+        self.settings.ui.radar_offset_x, self.settings.ui.radar_offset_y = ox, oy
+        if self.persist_radar:
+            try:
+                self.persist_radar(ox, oy)
+            except Exception:
+                logger.exception("persist_radar a echoue")
 
     def _layer_window(self, win, click_through: bool) -> str:
         import ctypes
@@ -190,12 +225,21 @@ class TkOverlay(OverlaySink):
         u.SetLayeredWindowAttributes(hwnd, _KEY_COLORREF, 255, LWA_COLORKEY)
         return "radar layered"
 
+    def _radar_overlay_mode(self) -> bool:
+        return self.settings.ui.radar_mode != "panel"
+
     def _draw_radar_idle(self) -> None:
         if self._radar_canvas is None:
             return
         cv = self._radar_canvas
         cv.delete("all")
         s = self._radar_size
+        if self._radar_overlay_mode():
+            # Transparent : rien a dessiner tant qu'il n'y a pas d'etat. En mode
+            # deplacement (Ctrl), un liseré aide a caler sur la minimap.
+            if self._move_mode:
+                cv.create_rectangle(1, 1, s - 1, s - 1, outline="#a6ff7a", width=2)
+            return
         cv.create_rectangle(2, 2, s - 2, s - 2, outline="#3a4d33", width=2)
         cv.create_text(s // 2, s // 2, text="RADAR", fill="#3a4d33",
                        font=("Segoe UI", 9, "bold"))
@@ -208,39 +252,67 @@ class TkOverlay(OverlaySink):
             return
         cv.delete("all")
         s = self._radar_size
+        overlay = self._radar_overlay_mode()
         ext = state.get("extent") or [-500, 500, -500, 500]
-        proj = RadarProjection(ext[0], ext[1], ext[2], ext[3], s, s, pad=10)
-        # Cadre + croix centrale discrète.
-        cv.create_rectangle(2, 2, s - 2, s - 2, outline="#3a4d33", width=2)
-        # Zones conseillées (halo vert) / danger (rouge).
-        for z in state.get("zones", []):
-            cx, cz = z["center"]
-            px, py = proj.to_px((cx, cz))
-            col = "#6fcf4f" if z.get("kind") == "good" else "#d9534f"
-            r = 10
-            cv.create_oval(px - r, py - r, px + r, py + r, outline=col, width=2)
-            cv.create_oval(px - 2, py - 2, px + 2, py + 2, fill=col, outline=col)
-        # Route (itinéraire) vers la zone conseillée.
+        # En mode overlay (sur la minimap), pas de marge : l'emprise = la minimap.
+        pad = 0 if overlay else 10
+        proj = RadarProjection(ext[0], ext[1], ext[2], ext[3], s, s, pad=pad)
+
+        if not overlay:
+            cv.create_rectangle(2, 2, s - 2, s - 2, outline="#3a4d33", width=2)
+        elif self._move_mode:
+            cv.create_rectangle(1, 1, s - 1, s - 1, outline="#a6ff7a", width=2)
+
+        zones = state.get("zones", [])
         route = state.get("route") or []
+        # Itinéraire (flèche épaisse) vers la zone conseillée, sous le marqueur.
         if len(route) == 2:
             ax, ay = proj.to_px(tuple(route[0]))
             bx, by = proj.to_px(tuple(route[1]))
-            cv.create_line(ax, ay, bx, by, fill="#6fcf4f", width=2, arrow="last",
-                           dash=(4, 3))
-        # Alliés (bleu) et ennemis spottés (rouge).
+            cv.create_line(ax, ay, bx, by, fill="#111a0d", width=6, arrow="last",
+                           arrowshape=(16, 20, 7))
+            cv.create_line(ax, ay, bx, by, fill="#a6ff7a", width=3, arrow="last",
+                           arrowshape=(14, 18, 6))
+        # Zones : la 1re (meilleure) est un GROS marqueur bien visible.
+        for i, z in enumerate(zones):
+            px, py = proj.to_px(tuple(z["center"]))
+            danger = z.get("kind") == "danger"
+            if i == 0 and not danger:
+                self._draw_target(cv, px, py)
+            else:
+                col = "#d9534f" if danger else "#6fcf4f"
+                r = 9
+                cv.create_oval(px - r, py - r, px + r, py + r, outline="#0d1a08", width=3)
+                cv.create_oval(px - r, py - r, px + r, py + r, outline=col, width=2)
+        # Alliés (bleu) et ennemis spottés (rouge) — petits points contrastés.
         for a in state.get("allies", []):
             px, py = proj.to_px(tuple(a))
-            cv.create_oval(px - 2, py - 2, px + 2, py + 2, fill="#4f9fd9", outline="")
+            cv.create_oval(px - 2, py - 2, px + 2, py + 2, fill="#4f9fd9",
+                           outline="#0d1a08")
         for e in state.get("enemies", []):
             px, py = proj.to_px(tuple(e))
             cv.create_oval(px - 3, py - 3, px + 3, py + 3, fill="#d9534f",
                            outline="#ffffff")
-        # Position propre (triangle vert vif).
+        # Position propre (triangle vert vif, contour noir).
         own = state.get("own")
         if own:
             px, py = proj.to_px(tuple(own))
-            cv.create_polygon(px, py - 6, px - 5, py + 5, px + 5, py + 5,
-                              fill="#a6ff7a", outline="#0d1a08")
+            cv.create_polygon(px, py - 7, px - 6, py + 6, px + 6, py + 6,
+                              fill="#a6ff7a", outline="#0d1a08", width=2)
+
+    def _draw_target(self, cv, px: int, py: int) -> None:
+        """Gros marqueur de destination : anneaux + croix + pastille — lisible
+        sur une minimap chargée (contour noir pour le contraste)."""
+        for r, w in ((16, 3), (16, 2), (9, 3)):
+            col = "#0d1a08" if w == 3 and r == 16 else "#a6ff7a"
+            cv.create_oval(px - r, py - r, px + r, py + r, outline=col, width=w)
+        # Croix de visée.
+        cv.create_line(px - 20, py, px + 20, py, fill="#0d1a08", width=3)
+        cv.create_line(px, py - 20, px, py + 20, fill="#0d1a08", width=3)
+        cv.create_line(px - 20, py, px + 20, py, fill="#a6ff7a", width=1)
+        cv.create_line(px, py - 20, px, py + 20, fill="#a6ff7a", width=1)
+        # Pastille centrale.
+        cv.create_oval(px - 3, py - 3, px + 3, py + 3, fill="#a6ff7a", outline="#0d1a08")
 
     def _anchor_base(self, sw, sh):
         m = 16
@@ -333,6 +405,7 @@ class TkOverlay(OverlaySink):
         except Exception:
             pass
         self._redraw()
+        self._refresh_radar()
 
     def _exit_move_mode(self) -> None:
         self._move_mode = False
@@ -358,6 +431,15 @@ class TkOverlay(OverlaySink):
                 except Exception:
                     logger.exception("persist_position a echoue")
         self._redraw()
+        self._refresh_radar()
+
+    def _refresh_radar(self) -> None:
+        if self._radar_canvas is None:
+            return
+        if self._radar_state is not None:
+            self._draw_radar(self._radar_state)
+        else:
+            self._draw_radar_idle()
 
     def _on_press(self, e):
         if self._move_mode:

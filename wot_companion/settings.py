@@ -82,6 +82,10 @@ class UISettings:
     click_through: bool = True         # laisse passer les clics (Windows)
     overlay_kind: str = "console"      # console / tk / none — memorise entre lancements
     radar_enabled: bool = False        # radar tactique (2e fenetre) — opt-in
+    radar_mode: str = "overlay"        # overlay (sur la minimap, transparent) / panel
+    radar_size: int = 254              # cote de la fenetre radar (px) — a caler sur la minimap
+    radar_offset_x: int = 0            # position propre du radar (Ctrl + glisser)
+    radar_offset_y: int = 0
     color_scheme: tuple[str, ...] = ("normal", "attention", "critical", "positive")
 
 

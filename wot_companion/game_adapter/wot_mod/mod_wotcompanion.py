@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b14"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b15"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -343,6 +343,24 @@ def _get_geometry(arena):
     )
 
 
+def _get_bounds(arena):
+    """Limites monde de l'arene [minX, minZ, maxX, maxZ] (memes bornes que la
+    minimap du jeu). Permet au compagnon d'aligner ses marqueurs sur la minimap.
+    boundingBox WoT = ((minX, minZ), (maxX, maxZ))."""
+    bb = _first(
+        lambda: arena.arenaType.boundingBox,
+        lambda: arena.arenaType.geometry.boundingBox,
+    )
+    try:
+        (minx, minz), (maxx, maxz) = bb
+        vals = [float(minx), float(minz), float(maxx), float(maxz)]
+        if all(abs(v) < 100000 for v in vals) and maxx > minx and maxz > minz:
+            return vals
+    except Exception:
+        pass
+    return None
+
+
 def _get_vehicle_descriptor(p):
     return _first(
         lambda: p.vehicleTypeDescriptor,
@@ -487,7 +505,11 @@ class CompanionBridge(object):
 
         map_id = _normalize_map(_get_geometry(arena))
         if map_id:
-            self.sender.send("MAP_INFO", {"map_id": map_id}, self.battle_id)
+            payload = {"map_id": map_id}
+            bounds = _get_bounds(arena)
+            if bounds:
+                payload["bounds"] = bounds
+            self.sender.send("MAP_INFO", payload, self.battle_id)
         spawn = "north" if self.my_team == 1 else "south"
         self.sender.send("SPAWN_INFO", {"spawn": spawn}, self.battle_id)
 

@@ -78,6 +78,19 @@ class LiveRunner:
 
         self.overlay.persist_position = _persist
 
+        if hasattr(self.overlay, "persist_radar"):
+            def _persist_radar(ox: int, oy: int) -> None:
+                from ..config import save_settings
+                self.settings.ui.radar_offset_x = ox
+                self.settings.ui.radar_offset_y = oy
+                try:
+                    save_settings(self.settings, self.config_path)
+                    print("[Radar] Position memorisee (offset %+d, %+d)." % (ox, oy))
+                except Exception:
+                    logger.exception("Sauvegarde de la position du radar impossible")
+
+            self.overlay.persist_radar = _persist_radar
+
     # ---- Messages de controle (non-jeu) -----------------------------------
     def _on_control(self, env: EventEnvelope) -> None:
         etype = env.event_type

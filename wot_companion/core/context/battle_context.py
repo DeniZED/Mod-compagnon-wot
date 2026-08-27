@@ -72,6 +72,7 @@ class BattleContext:
     vehicle_class: str | None = None
     vehicle_role: str | None = None        # rôle metier interne (resolu via KB)
     map_id: str | None = None
+    map_bounds: tuple[float, float, float, float] | None = None  # minX,minZ,maxX,maxZ
     spawn: str | None = None
     composition: TeamComposition = field(default_factory=TeamComposition)
 
@@ -123,6 +124,12 @@ class BattleContext:
                 self.vehicle_role = p.get("role")
         elif et == EventType.MAP_INFO.value:
             self.map_id = p.get("map_id")
+            b = p.get("bounds")
+            if isinstance(b, (list, tuple)) and len(b) == 4:
+                try:
+                    self.map_bounds = (float(b[0]), float(b[1]), float(b[2]), float(b[3]))
+                except (TypeError, ValueError):
+                    self.map_bounds = None
         elif et == EventType.SPAWN_INFO.value:
             self.spawn = p.get("spawn")
         elif et == EventType.TEAM_COMPOSITION.value:
