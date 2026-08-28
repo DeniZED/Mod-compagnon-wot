@@ -30,6 +30,7 @@ class AdviceCategory(str, Enum):
     POSITIVE = "POSITIVE"
     REACTION = "REACTION"      # reactions breves aux evenements (tir recu...)
     POSITIONING = "POSITIONING"  # placement (isolement, surextension, menace locale)
+    STRATEGY = "STRATEGY"        # macro : basculer front, replier/defendre, pousser
     GARAGE = "GARAGE"
 
 

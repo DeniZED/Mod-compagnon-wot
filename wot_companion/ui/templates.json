@@ -110,6 +110,24 @@
       "detendu": "Y'a {enemies} ennemis spottes sur toi et {allies} pote(s) : temporise.",
       "silencieux": "Sous-nombre local : replie."
     },
+    "strat_relocate": {
+        "coach": "Ton secteur est calme, l'action est {direction}{cell_suffix} (~{distance_m} m). Bascule pour peser la ou ca se joue.",
+        "commandant": "Secteur clean. File {direction}{cell_suffix} farmer.",
+        "detendu": "Plus rien a faire ici : l'action est {direction}{cell_suffix}, va-y pour continuer a peser.",
+        "silencieux": "Bascule {direction}{cell_suffix}."
+    },
+    "strat_defend": {
+        "coach": "Sous-nombre ({allies} vs {enemies}) : ne te jette pas. Replie, joue defensif, protege la base et fais payer chaque avance.",
+        "commandant": "{allies}v{enemies}. Repli, defense base.",
+        "detendu": "On est en sous-nombre ({allies} vs {enemies}), evite de te faire prendre : temporise et defends.",
+        "silencieux": "Sous-nombre : defends."
+    },
+    "strat_push": {
+        "coach": "Avantage ({allies} vs {enemies}) : pousse avec l'equipe {direction}{cell_suffix} pour conclure, ne laisse pas le temps se retourner.",
+        "commandant": "{allies}v{enemies}. Pousse {direction}{cell_suffix}.",
+        "detendu": "Vous avez l'avantage ({allies} vs {enemies}) : accompagne la poussee {direction}{cell_suffix}.",
+        "silencieux": "Avantage : pousse {direction}{cell_suffix}."
+    },
     "pos_replay_zone": {
         "coach": "Zone plus efficace{cell_suffix} ({direction}, ~{distance_m} m). Les bons joueurs la privilegient a cette phase ({popularity_pct}% des references). Repositionne-toi si le flanc le permet.",
         "commandant": "Meilleure zone{cell_suffix} — {direction}, {distance_m} m. Bouge.",
