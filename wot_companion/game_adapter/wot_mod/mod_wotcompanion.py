@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b16"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b17"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -936,12 +936,14 @@ class CompanionBridge(object):
         _probe("BigWorld.screenWidth()", lambda: _bw().screenWidth())
         _probe("BigWorld.screenHeight()", lambda: _bw().screenHeight())
         _probe("BigWorld.screenSize()", lambda: _bw().screenSize())
-        # Reglage de taille de minimap (plusieurs cles/emplacements selon version).
-        def _setting(key):
-            from account_helpers.settings_core.SettingsCore import g_settingsCore
-            return g_settingsCore.getSetting(key)
-        for key in ("minimapSize", "MINIMAP_SIZE", "minimap_size"):
-            _probe("getSetting(%s)" % key, (lambda k: (lambda: _setting(k)))(key))
+        # Reglage de taille de minimap via l'injection de dependances (WoT 2.x).
+        def _settings_core():
+            from helpers import dependency
+            from skeletons.account_helpers.settings_core import ISettingsCore
+            return dependency.instance(ISettingsCore)
+        for key in ("minimapSize", "minimapVisibleSize", "minimap_size"):
+            _probe("getSetting(%s)" % key,
+                   (lambda k: (lambda: _settings_core().getSetting(k)))(key))
         # Composant minimap de bataille (dimensions reelles si accessibles).
         _probe("battle app minimap size", self._probe_battle_minimap_size)
 

@@ -29,3 +29,40 @@ def canonical_map_id(name: Optional[str]) -> Optional[str]:
     key = key.split("/")[-1]           # queue de chemin éventuel
     key = _PREFIX.sub("", key)         # retire "08_", "11_", ...
     return _MAP_ALIASES.get(key, key)
+
+
+# Lignes de la grille minimap WoT : A..K en SAUTANT le "I" (10 lignes),
+# du nord (haut) au sud (bas). Colonnes 1..10, d'ouest (gauche) à est (droite).
+_GRID_ROWS = "ABCDEFGHJK"
+
+
+def grid_cell(pos, bounds, cols: int = 10, sub: bool = True) -> Optional[str]:
+    """Case de la grille minimap (ex. 'C4', ou 'C4-9' avec la sous-case).
+
+    `bounds` = (minX, minZ, maxX, maxZ), les bornes de l'arène (mêmes que la
+    minimap du jeu). Repère WoT : +x est, +z nord ; le nord est en haut, donc la
+    ligne A est au z max. Renvoie None si les bornes sont absentes/incohérentes.
+
+    Une case fait ~100×100 m — trop large. Avec `sub`, on ajoute le quadrant en
+    notation pavé numérique WoT (7 8 9 au nord, 4 5 6 au centre, 1 2 3 au sud),
+    soit une précision ~33 m : 'C4-9' = coin nord-est de C4.
+    """
+    if not pos or not bounds or len(bounds) != 4:
+        return None
+    x, z = pos[0], pos[1]
+    minx, minz, maxx, maxz = bounds
+    if maxx <= minx or maxz <= minz:
+        return None
+    rows = len(_GRID_ROWS)
+    fx = (x - minx) / (maxx - minx)          # 0 (ouest) .. 1 (est)
+    fz = (maxz - z) / (maxz - minz)           # 0 (nord/haut) .. 1 (sud/bas)
+    ci = min(cols - 1, max(0, int(fx * cols)))
+    ri = min(rows - 1, max(0, int(fz * rows)))
+    cell = "%s%d" % (_GRID_ROWS[ri], ci + 1)
+    if not sub:
+        return cell
+    # Sous-case : quadrant 3×3 dans la case, en notation pavé numérique.
+    sx = min(2, max(0, int((fx * cols - ci) * 3)))          # 0 ouest .. 2 est
+    sz = min(2, max(0, int((fz * rows - ri) * 3)))          # 0 nord .. 2 sud
+    numpad = (2 - sz) * 3 + sx + 1
+    return "%s-%d" % (cell, numpad)

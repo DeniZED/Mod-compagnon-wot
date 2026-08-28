@@ -30,6 +30,33 @@ def _zone(center, map_id="ruinberg", phase="early", arch=Archetype.SNIPER_MEDIUM
         sample_size=30, confidence=conf)
 
 
+def test_grid_cell_corners():
+    from wot_companion.core.maps import grid_cell
+    b = (-500, -500, 500, 500)     # minX, minZ, maxX, maxZ
+    # Case + sous-case (pavé numérique : 7-8-9 nord, 1-2-3 sud).
+    assert grid_cell((-490, 490), b) == "A1-7"    # nord-ouest
+    assert grid_cell((490, 490), b) == "A10-9"    # nord-est
+    assert grid_cell((-490, -490), b) == "K1-1"   # sud-ouest
+    assert grid_cell((490, -490), b) == "K10-3"   # sud-est
+    assert grid_cell((300, 300), b, sub=False) == "C9"   # sans sous-case
+    assert grid_cell((0, 0), None) is None        # sans bornes -> pas de case
+
+
+def test_advice_includes_grid_cell_when_bounds_known():
+    kb = TacticalKnowledgeBase([_zone(center=(150.0, 150.0))])   # nord-est, <250 m
+    ctx = BattleContext(battle_id="b", start_ms=0)
+    ctx.elapsed_s = 60
+    ctx.own_pos = (0.0, 0.0)
+    ctx.map_id = "ruinberg"
+    ctx.vehicle_class = "medium"
+    ctx.map_bounds = (-500.0, -500.0, 500.0, 500.0)
+    rc = RuleContext(battle=ctx, features=FeatureBuilder().build(ctx),
+                     knowledge=None, tactical_kb=kb)
+    out = TacticalPositioningRule().evaluate(rc)
+    assert out and out[0].context["cell"]        # une case est fournie
+    assert out[0].context["cell_suffix"].startswith(" en ")
+
+
 def test_cardinal_directions():
     assert _cardinal(0, 100) == "au nord"
     assert _cardinal(100, 0) == "a l'est"

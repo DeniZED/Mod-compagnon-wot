@@ -21,7 +21,7 @@ import math
 from ...settings import AdviceCategory, Severity
 from ..advice import CandidateAdvice
 from ..context.features import BattlePhase
-from ..maps import canonical_map_id
+from ..maps import canonical_map_id, grid_cell
 from .base import Rule, RuleContext
 
 logger = logging.getLogger("wot_companion.rules.replay_zones")
@@ -107,6 +107,9 @@ class TacticalPositioningRule(Rule):
                     zone.sample_size)
 
         direction = _cardinal(dx, dz)
+        # Case de la grille minimap (ex. 'C4') si les bornes d'arene sont connues :
+        # un repere bien plus precis/actionnable qu'une direction cardinale.
+        cell = grid_cell(zone.center, b.map_bounds)
         # Confiance du conseil : bornee par la confiance statistique de la zone.
         confidence = min(0.8, 0.45 + zone.confidence * 0.4)
         # Léger relèvement : reste SOUS les alertes réactives (HP bas, repli,
@@ -120,6 +123,8 @@ class TacticalPositioningRule(Rule):
             urgency=0.5, impact=0.65, confidence=confidence,
             context={
                 "direction": direction,
+                "cell": cell or "",
+                "cell_suffix": (" en %s" % cell) if cell else "",
                 "distance_m": int(round(dist)),
                 "popularity_pct": int(round(zone.popularity * 100)),
                 "sample": zone.sample_size,
