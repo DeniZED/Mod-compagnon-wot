@@ -403,7 +403,13 @@ class TkOverlay(OverlaySink):
         self._move_mode = True
         self._move_origin = (self._root.winfo_x(), self._root.winfo_y())
         if not self.debug_opaque:
-            self._set_click_through(False)   # capter la souris
+            self._set_click_through(False)   # capter la souris (bulle)
+            # ... et le radar : sinon les clics le traversent et il reste fige.
+            if self._radar_win is not None:
+                try:
+                    self._layer_window(self._radar_win, False)
+                except Exception:
+                    logger.exception("radar : desactivation click-through a echoue")
         try:
             self._root.config(cursor="fleur")
         except Exception:
@@ -415,6 +421,11 @@ class TkOverlay(OverlaySink):
         self._move_mode = False
         if not self.debug_opaque:
             self._set_click_through(self.settings.ui.click_through)
+            if self._radar_win is not None:
+                try:
+                    self._layer_window(self._radar_win, self.settings.ui.click_through)
+                except Exception:
+                    logger.exception("radar : retablissement click-through a echoue")
         try:
             self._root.config(cursor="")
         except Exception:
