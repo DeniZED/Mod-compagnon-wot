@@ -86,6 +86,10 @@ class TkOverlay(OverlaySink):
         if self.settings.ui.radar_enabled:
             self._queue.put({"radar": state})
 
+    def clear_radar(self) -> None:
+        """Efface le radar (retour garage : plus de marqueurs de la partie passée)."""
+        self._queue.put({"radar_clear": True})
+
     def show_garage(self, text: str) -> None:
         self._queue.put({
             "text": text, "severity": "POSITIVE", "category": "GARAGE",
@@ -464,6 +468,9 @@ class TkOverlay(OverlaySink):
                 msg = self._queue.get_nowait()
                 if msg.get("clear"):
                     self._draw_idle()
+                elif msg.get("radar_clear"):
+                    self._radar_state = None
+                    self._draw_radar_idle()
                 elif "radar" in msg:
                     self._draw_radar(msg["radar"])
                 elif "state_hp_ratio" in msg:

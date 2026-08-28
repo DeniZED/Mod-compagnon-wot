@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b15"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b16"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -920,8 +920,45 @@ class CompanionBridge(object):
             _discovery_log("    sample vid=%r team=%r class=%r alive=%r" % row)
         _probe("arena.period", lambda: arena.period)
         self._discover_positions(p, arena)
+        self._discover_minimap()
         _discovery_log("Colle ce bloc au developpeur pour ajuster les hooks.")
         _discovery_log("=====================================")
+
+    def _discover_minimap(self):
+        """Sonde la GEOMETRIE de la minimap (resolution + taille) pour, a terme,
+        caler automatiquement le radar dessus. On loggue tous les candidats : la
+        formule exacte depend de la version du client, on l'ajuste depuis ce log."""
+        _discovery_log("  --- MINIMAP (auto-taille radar) ---")
+
+        def _bw():
+            import BigWorld
+            return BigWorld
+        _probe("BigWorld.screenWidth()", lambda: _bw().screenWidth())
+        _probe("BigWorld.screenHeight()", lambda: _bw().screenHeight())
+        _probe("BigWorld.screenSize()", lambda: _bw().screenSize())
+        # Reglage de taille de minimap (plusieurs cles/emplacements selon version).
+        def _setting(key):
+            from account_helpers.settings_core.SettingsCore import g_settingsCore
+            return g_settingsCore.getSetting(key)
+        for key in ("minimapSize", "MINIMAP_SIZE", "minimap_size"):
+            _probe("getSetting(%s)" % key, (lambda k: (lambda: _setting(k)))(key))
+        # Composant minimap de bataille (dimensions reelles si accessibles).
+        _probe("battle app minimap size", self._probe_battle_minimap_size)
+
+    @staticmethod
+    def _probe_battle_minimap_size():
+        from gui.app_loader import g_appLoader
+        app = g_appLoader.getDefBattleApp()
+        # On explore quelques attributs plausibles du composant minimap.
+        comp = _first(
+            lambda: app.containerManager.getView(1).components["minimap"],
+            lambda: app.minimap,
+        )
+        return _first(
+            lambda: comp.getMinimapSize(),
+            lambda: (comp.width, comp.height),
+            lambda: comp._size,
+        )
 
     def _discover_positions(self, p, arena):
         """Sonde les positions LISIBLES cote joueur (Fair Play) : sa propre

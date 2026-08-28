@@ -65,3 +65,24 @@ def test_map_extent_from_base():
     kb = TacticalKnowledgeBase([z(-100, -50), z(200, 300)])
     assert kb.map_extent("m") == (-100, 200, -50, 300)
     assert kb.map_extent("absente") is None
+
+
+def test_app_clears_radar_on_garage():
+    from wot_companion.app import CompanionApp
+    from wot_companion.core.events import RawEvent, EventType
+
+    class FO:
+        def __init__(self): self.radar_cleared = False
+        def notify_state(self, **k): pass
+        def notify_radar(self, st): pass
+        def clear_radar(self): self.radar_cleared = True
+        def show(self, *a): pass
+        def show_garage(self, t): pass
+        def clear(self): pass
+
+    ov = FO()
+    app = CompanionApp(overlay=ov)
+    app._handle(RawEvent(EventType.BATTLE_START.value, {"battle_id": "b"}, 0, "b"))
+    app._handle(RawEvent(EventType.BATTLE_END.value, {"battle_id": "b"}, 0, "b"))
+    assert ov.radar_cleared is True
+    app.close()

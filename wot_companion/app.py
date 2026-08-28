@@ -141,12 +141,19 @@ class CompanionApp:
         print("------------------------------------\n")
         # Overlay : remplace le dernier message de combat par la synthese garage,
         # pour ne pas rester sur un conseil de la partie precedente.
-        if self.overlay is not None and lines:
-            summary = " ".join(line.strip() for line in lines[:2])
-            try:
-                self.overlay.show_garage("Retour garage — " + summary)
-            except Exception:
-                logger.exception("show_garage overlay a echoue")
+        if self.overlay is not None:
+            # Efface le radar : plus de marqueurs de la partie passee au garage.
+            if hasattr(self.overlay, "clear_radar"):
+                try:
+                    self.overlay.clear_radar()
+                except Exception:
+                    logger.exception("clear_radar overlay a echoue")
+            if lines:
+                summary = " ".join(line.strip() for line in lines[:2])
+                try:
+                    self.overlay.show_garage("Retour garage — " + summary)
+                except Exception:
+                    logger.exception("show_garage overlay a echoue")
 
     def close(self) -> None:
         self.store.close()
