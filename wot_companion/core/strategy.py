@@ -68,6 +68,8 @@ class StrategicPicture:
     phase: str
     remaining_s: Optional[float]
     late: bool
+    overextended: bool = False            # surétendu devant l'équipe (features)
+    took_damage: bool = False             # a encaissé récemment (features)
 
     @property
     def action_direction(self) -> Optional[str]:
@@ -115,4 +117,6 @@ def analyze(battle, features, bounds=None) -> StrategicPicture:
         dist_to_action=dist_to_action, enemies_near_me=enemies_near,
         allies_near_me=allies_near, sector_calm=sector_calm, hp_ratio=hp,
         healthy=healthy, phase=phase_name, remaining_s=remaining, late=late,
+        overextended=bool(getattr(features, "overextended", False)),
+        took_damage=bool(getattr(features, "took_damage_recently", False)),
     )
