@@ -63,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
                              "panel = mini-carte autonome avec cadre. Memorise.")
     parser.add_argument("--radar-size", type=int, default=None,
                         help="Cote de la fenetre radar en px, a caler sur ta minimap. Memorise.")
+    parser.add_argument("--radar-fraction", type=float, default=None,
+                        help="Cote du radar = cette fraction de la hauteur d'ecran "
+                             "(ex. 0.42). Independant de la resolution ; prime sur "
+                             "--radar-size. 0 pour desactiver. Memorise.")
     parser.add_argument("--overlay-debug", action="store_true",
                         help="Overlay OPAQUE (diagnostic) : sans transparence ni "
                              "click-through, pour verifier qu'il s'affiche par-dessus le jeu.")
@@ -120,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         settings.ui.radar_mode = args.radar_mode
     if args.radar_size is not None:
         settings.ui.radar_size = max(120, args.radar_size)
+    if args.radar_fraction is not None:
+        settings.ui.radar_fraction = max(0.0, args.radar_fraction)
     if args.overlay_anchor is not None:
         settings.ui.anchor = args.overlay_anchor
     if args.overlay_x is not None:

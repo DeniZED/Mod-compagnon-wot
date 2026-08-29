@@ -85,6 +85,8 @@ class UISettings:
     radar_enabled: bool = False        # radar tactique (2e fenetre) — opt-in
     radar_mode: str = "overlay"        # overlay (sur la minimap, transparent) / panel
     radar_size: int = 254              # cote de la fenetre radar (px) — a caler sur la minimap
+    radar_fraction: float = 0.0        # >0 : cote = fraction de la hauteur d'ecran
+    #                                    (independant de la resolution ; sinon radar_size)
     radar_offset_x: int = 0            # position propre du radar (Ctrl + glisser)
     radar_offset_y: int = 0
     color_scheme: tuple[str, ...] = ("normal", "attention", "critical", "positive")

@@ -45,6 +45,7 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
             "radar_enabled": s.ui.radar_enabled,
             "radar_mode": s.ui.radar_mode,
             "radar_size": s.ui.radar_size,
+            "radar_fraction": s.ui.radar_fraction,
             "radar_offset_x": s.ui.radar_offset_x,
             "radar_offset_y": s.ui.radar_offset_y,
         },
@@ -96,6 +97,7 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
             radar_enabled=bool(ui.get("radar_enabled", s.ui.radar_enabled)),
             radar_mode=str(ui.get("radar_mode", s.ui.radar_mode)),
             radar_size=int(ui.get("radar_size", s.ui.radar_size)),
+            radar_fraction=float(ui.get("radar_fraction", s.ui.radar_fraction)),
             radar_offset_x=int(ui.get("radar_offset_x", s.ui.radar_offset_x)),
             radar_offset_y=int(ui.get("radar_offset_y", s.ui.radar_offset_y)),
         )

@@ -137,6 +137,13 @@ class TkOverlay(OverlaySink):
         self._draw_idle(startup=True)
 
         if self.settings.ui.radar_enabled:
+            # Taille en fraction de la hauteur d'ecran (independant de la resolution)
+            # si configuree, sinon la taille px memorisee.
+            frac = self.settings.ui.radar_fraction
+            if frac and frac > 0:
+                self._radar_size = max(120, int(sh * frac))
+                print("[Radar] taille = %.0f%% de %dpx = %d px"
+                      % (frac * 100, sh, self._radar_size))
             self._build_radar_window(tk, root, x, y, sw, sh)
 
         print("[Overlay] fenetre %dx%d @ (%d,%d) | ancrage=%s | images=%d | %s"
