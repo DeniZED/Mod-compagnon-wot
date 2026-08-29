@@ -151,20 +151,23 @@ class FeatureBuilder:
         # Isole : on connait des allies mais aucun a portee de soutien.
         isolated = bool(allies) and (nearest is None or nearest > ISOLATION_DIST_M)
 
-        # Surextension : le joueur est nettement plus avance vers les ennemis
-        # spottes que le centre de son equipe. Necessite allies + ennemis spottes.
+        # Surextension : le joueur est nettement plus AVANCE que son equipe le long
+        # de l'axe equipe->ennemis. On PROJETTE la position sur cet axe : un decalage
+        # LATERAL (etre "a cote" de la team) ne compte pas, seule l'avance vers
+        # l'ennemi compte. Necessite allies + ennemis spottes, et un axe net.
         overextended = False
         if allies and enemies:
             ax = sum(a[0] for a in allies) / len(allies)
             az = sum(a[1] for a in allies) / len(allies)
             ex = sum(e[0] for e in enemies) / len(enemies)
             ez = sum(e[1] for e in enemies) / len(enemies)
-            ally_centroid = (ax, az)
-            enemy_centroid = (ex, ez)
-            # Distance du joueur au front ennemi vs celle du centre allie au front.
-            own_to_enemy = dist(own, enemy_centroid)
-            team_to_enemy = dist(ally_centroid, enemy_centroid)
-            overextended = own_to_enemy < team_to_enemy - SUPPORT_RADIUS_M
+            dxe, dze = ex - ax, ez - az          # axe equipe -> ennemis
+            axis_len = math.hypot(dxe, dze)
+            if axis_len >= 80.0:                 # axe assez net pour juger l'avance
+                ux, uz = dxe / axis_len, dze / axis_len
+                # Avance du joueur DEVANT le centre de l'equipe, projetee sur l'axe.
+                ahead = (own[0] - ax) * ux + (own[1] - az) * uz
+                overextended = ahead > SUPPORT_RADIUS_M
 
         return {"nearest_ally_dist": nearest, "allies_near": allies_near,
                 "enemies_spotted_near": enemies_near, "isolated": isolated,

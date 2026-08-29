@@ -57,3 +57,21 @@ def test_contribution_updates_last_contribution_time():
     ctx.elapsed_s = 130
     f = FeatureBuilder().build(ctx)
     assert f.time_since_contribution_s == 80
+
+
+def _over(own, allies, enemies):
+    c = BattleContext(battle_id="b", start_ms=0)
+    c.own_pos = own
+    c.ally_positions = allies
+    c.enemy_positions_spotted = enemies
+    return FeatureBuilder().build(c).overextended
+
+
+def test_overextended_uses_forward_projection_not_lateral():
+    # Équipe en z=0, ennemis au nord (z=+400) : l'axe de poussée est +z.
+    allies = [(-50, 0), (0, 0), (50, 0)]
+    enemies = [(0, 400), (40, 420)]
+    assert _over((0, 250), allies, enemies) is True       # nettement devant
+    assert _over((250, 0), allies, enemies) is False      # à côté (latéral) -> non
+    assert _over((0, 20), allies, enemies) is False       # au niveau de la team
+    assert _over((0, -100), allies, enemies) is False     # derrière
