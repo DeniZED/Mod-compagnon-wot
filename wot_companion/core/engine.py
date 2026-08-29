@@ -63,6 +63,7 @@ class AdviceEngine:
         self.last_features = None
         self.features_builder = FeatureBuilder()
         self._fired_once: set[str] = set()
+        self._dead = False
         self.player_profile: dict | None = None
 
     # ---- Chargement des regles avec controle Fair Play ---------------------
@@ -84,6 +85,7 @@ class AdviceEngine:
         self.features_builder = FeatureBuilder()
         self.arbiter.reset()
         self._fired_once.clear()
+        self._dead = False
         return self.context
 
     def on_event(self, event: RawEvent) -> bool:
@@ -117,6 +119,18 @@ class AdviceEngine:
     def evaluate(self) -> AdviceObject | None:
         """Evalue les regles et retourne au plus un conseil (BAT-006)."""
         if self.context is None or self.context.finished:
+            return None
+
+        # Joueur detruit : plus aucun conseil ni radar (on ne commente pas la
+        # partie une fois mort / en spectateur). Le radar est vide une fois.
+        if self.context.hp_ratio is not None and self.context.hp_ratio <= 0.0:
+            if not self._dead:
+                self._dead = True
+                if self.overlay is not None and hasattr(self.overlay, "clear_radar"):
+                    try:
+                        self.overlay.clear_radar()
+                    except Exception:
+                        logger.exception("clear_radar overlay a echoue")
             return None
 
         # Etat de jeu continu vers l'overlay (mascotte reactive aux HP), meme

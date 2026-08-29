@@ -128,6 +128,12 @@
         "detendu": "Vous avez l'avantage ({allies} vs {enemies}) : accompagne la poussee {direction}{cell_suffix}.",
         "silencieux": "Avantage : pousse {direction}{cell_suffix}."
     },
+    "pos_replay_opening": {
+        "coach": "Ouverture : oriente-toi{cell_suffix} ({direction}, ~{distance_m} m). Les bons y vont souvent a ce spawn ({popularity_pct}% des references).",
+        "commandant": "Ouverture : pars{cell_suffix} ({direction}).",
+        "detendu": "Pour commencer, oriente-toi plutot{cell_suffix} ({direction}) : c'est ce que jouent les bons a ce spawn.",
+        "silencieux": "Ouverture{cell_suffix} ({direction})."
+    },
     "pos_replay_zone": {
         "coach": "Zone plus efficace{cell_suffix} ({direction}, ~{distance_m} m). Les bons joueurs la privilegient a cette phase ({popularity_pct}% des references). Repositionne-toi si le flanc le permet.",
         "commandant": "Meilleure zone{cell_suffix} — {direction}, {distance_m} m. Bouge.",

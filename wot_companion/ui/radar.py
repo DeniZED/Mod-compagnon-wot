@@ -20,8 +20,11 @@ XZ = Tuple[float, float]
 class RadarProjection:
     """Convertit des coordonnées monde (x, z) en pixels d'un canvas W×H.
 
-    L'emprise (xmin..xmax, zmin..zmax) borne la zone jouable ; on ajoute une marge
-    et on conserve le ratio pour ne pas déformer la carte.
+    Mapping 1:1 EXACT sur l'emprise (xmin..xmax, zmin..zmax) — comme la minimap du
+    jeu qui remplit son carré avec les bornes de l'arène. Chaque axe est mis à
+    l'échelle indépendamment (pas de marge, pas de re-carrage) pour que les
+    marqueurs tombent au même endroit que sur la minimap. `pad` (>0) sert au mode
+    panneau autonome ; il vaut 0 en mode overlay pour coller pile à la minimap.
     """
     xmin: float
     xmax: float
@@ -29,24 +32,18 @@ class RadarProjection:
     zmax: float
     width: int
     height: int
-    pad: int = 8
+    pad: int = 0
 
     def __post_init__(self) -> None:
-        # Emprise carrée (les cartes WoT le sont ~) centrée, pour un rendu non déformé.
-        cx = (self.xmin + self.xmax) / 2.0
-        cz = (self.zmin + self.zmax) / 2.0
-        half = max(self.xmax - self.xmin, self.zmax - self.zmin, 1.0) / 2.0
-        half *= 1.05                       # petite marge
-        self._x0, self._x1 = cx - half, cx + half
-        self._z0, self._z1 = cz - half, cz + half
-        self._span = 2.0 * half
+        self._sx = max(self.xmax - self.xmin, 1e-6)
+        self._sz = max(self.zmax - self.zmin, 1e-6)
 
     def to_px(self, pos: XZ) -> Tuple[int, int]:
         x, z = pos
         inner_w = self.width - 2 * self.pad
         inner_h = self.height - 2 * self.pad
-        px = self.pad + (x - self._x0) / self._span * inner_w
-        pz = self.pad + (self._z1 - z) / self._span * inner_h   # nord en haut
+        px = self.pad + (x - self.xmin) / self._sx * inner_w
+        pz = self.pad + (self.zmax - z) / self._sz * inner_h    # nord en haut
         return int(round(px)), int(round(pz))
 
 

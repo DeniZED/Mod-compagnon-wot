@@ -19,15 +19,13 @@ def test_projection_north_is_up():
     assert px_east > px_west
 
 
-def test_projection_keeps_square_aspect():
-    # Emprise non carrée : la projection recadre en carré (pas de déformation).
-    p = RadarProjection(-100, 100, -500, 500, width=200, height=200, pad=0)
-    # un pas de 100 m en x et en z doit couvrir le meme nb de pixels
-    x0 = p.to_px((0.0, 0.0))[0]
-    x1 = p.to_px((100.0, 0.0))[0]
-    z0 = p.to_px((0.0, 0.0))[1]
-    z1 = p.to_px((0.0, 100.0))[1]
-    assert abs((x1 - x0)) == abs((z1 - z0))
+def test_projection_maps_bounds_1to1_to_canvas():
+    # Mapping EXACT : les coins de l'emprise tombent aux coins du canvas (comme
+    # la minimap qui remplit son carré avec les bornes). Pas de marge.
+    p = RadarProjection(-500, 500, -500, 500, width=200, height=200, pad=0)
+    assert p.to_px((-500, 500)) == (0, 0)          # NO -> haut-gauche
+    assert p.to_px((500, -500)) == (200, 200)      # SE -> bas-droite
+    assert p.to_px((0, 0)) == (100, 100)           # centre
 
 
 def test_bbox_and_fallback():
@@ -86,3 +84,14 @@ def test_app_clears_radar_on_garage():
     app._handle(RawEvent(EventType.BATTLE_END.value, {"battle_id": "b"}, 0, "b"))
     assert ov.radar_cleared is True
     app.close()
+
+
+def test_engine_stops_advising_when_player_dead():
+    from wot_companion.core.engine import AdviceEngine
+    from wot_companion.core.events import RawEvent, EventType
+    eng = AdviceEngine()
+    eng.on_event(RawEvent(EventType.BATTLE_START.value, {"battle_id": "b"}, 0, "b"))
+    eng.on_event(RawEvent(EventType.CLOCK_TICK.value, {"elapsed_s": 100}, 0, "b"))
+    eng.on_event(RawEvent(EventType.PLAYER_HP_CHANGED.value, {"hp": 0, "max_hp": 2000}, 0, "b"))
+    assert eng.evaluate() is None
+    assert eng._dead is True

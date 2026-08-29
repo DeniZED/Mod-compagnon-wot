@@ -115,10 +115,16 @@ class TacticalPositioningRule(Rule):
         # Léger relèvement : reste SOUS les alertes réactives (HP bas, repli,
         # sous-nombre) pour ne jamais les court-circuiter, mais passe au-dessus des
         # conseils faibles et du seuil, afin d'apparaître dans les temps calmes.
+        # En ouverture (phase EARLY), on formule un conseil d'ORIENTATION
+        # ("oriente-toi vers…") plutôt qu'un "repositionne-toi" : c'est là que le
+        # joueur veut savoir où partir.
+        opening = rc.features.phase is BattlePhase.EARLY
+        action = "OPENING_DIRECTION" if opening else "REPOSITION_TO_ZONE"
+        template = "pos_replay_opening" if opening else "pos_replay_zone"
         return [CandidateAdvice(
             rule_id=self.id, category=AdviceCategory.POSITIONING,
-            action="REPOSITION_TO_ZONE", reason_code="REPLAY_EFFECTIVE_ZONE",
-            template_key="pos_replay_zone", severity=Severity.INFO,
+            action=action, reason_code="REPLAY_EFFECTIVE_ZONE",
+            template_key=template, severity=Severity.INFO,
             ttl_seconds=8.0, cooldown_key="positioning_replay",
             urgency=0.5, impact=0.65, confidence=confidence,
             context={

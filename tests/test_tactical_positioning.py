@@ -70,9 +70,16 @@ def test_suggests_direction_toward_effective_zone():
     out = rule.evaluate(_rc(kb, own=(0.0, 0.0)))
     assert len(out) == 1
     c = out[0]
-    assert c.action == "REPOSITION_TO_ZONE"
+    # Phase EARLY (t=60) -> conseil d'OUVERTURE (orientation).
+    assert c.action == "OPENING_DIRECTION"
     assert c.context["direction"] == "a l'est"
-    assert c.context["distance_m"] == 150
+
+
+def test_mid_phase_gives_reposition_not_opening():
+    kb = TacticalKnowledgeBase([_zone(center=(150.0, 0.0), phase="mid")])
+    out = TacticalPositioningRule().evaluate(_rc(kb, own=(0.0, 0.0), t=200.0))
+    assert out and out[0].action == "REPOSITION_TO_ZONE"
+    assert out[0].context["distance_m"] == 150
 
 
 def test_silent_when_already_in_zone():
