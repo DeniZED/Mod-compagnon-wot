@@ -116,6 +116,12 @@
         "detendu": "Plus rien a faire ici : l'action est {direction}{cell_suffix}, va-y pour continuer a peser.",
         "silencieux": "Bascule {direction}{cell_suffix}."
     },
+    "strat_regroup": {
+        "coach": "Leger sous-nombre ({allies} vs {enemies}) : ne t'isole pas, regroupe-toi vers l'axe fort de l'equipe pour rester en superiorite locale.",
+        "commandant": "{allies}v{enemies}. Regroupe l'axe fort.",
+        "detendu": "On est un peu en dessous ({allies} vs {enemies}) : rejoins le gros de l'equipe plutot que de jouer seul.",
+        "silencieux": "Regroupe-toi."
+    },
     "strat_defend": {
         "coach": "Sous-nombre ({allies} vs {enemies}) : ne te jette pas. Replie, joue defensif, protege la base et fais payer chaque avance.",
         "commandant": "{allies}v{enemies}. Repli, defense base.",

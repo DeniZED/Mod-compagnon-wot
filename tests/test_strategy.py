@@ -69,6 +69,14 @@ def test_defend_when_outnumbered():
     assert out[0].context["enemies"] == 7
 
 
+def test_moderate_deficit_regroups_not_defends():
+    # -2 seulement : regroupement (axe fort), pas « protège la base ».
+    ctx = _ctx(own=(0, 0), enemies=[(50, 50)], a_alive=9, e_alive=11)
+    out = _eval(ctx)
+    assert out and out[0].action == "REGROUP_STRONG_AXIS"
+    assert out[0].template_key == "strat_regroup"
+
+
 def test_push_when_advantage_and_engaged_near_front():
     # Avantage ET proche du front (secteur non calme) -> presser.
     ctx = _ctx(own=(300, 300), enemies=[(350, 350)], a_alive=8, e_alive=4)

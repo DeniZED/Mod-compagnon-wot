@@ -138,11 +138,16 @@ class MacroStrategyRule(Rule):
         )
 
     def _advice_fall_back(self, sp, own, bounds, u) -> CandidateAdvice:
-        crit = sp.balance is not None and sp.balance <= -3 and sp.late
+        bal = sp.balance if sp.balance is not None else 0
+        # Sous-nombre MODÉRÉ (-2) : simple regroupement vers l'axe fort ; on ne
+        # crie « défends la base » que quand le déficit est net (-3 et plus).
+        severe = bal <= -3
+        crit = severe and sp.late
         return CandidateAdvice(
             rule_id=self.id, category=AdviceCategory.STRATEGY,
-            action="FALL_BACK_DEFEND", reason_code="OUTNUMBERED_GAME",
-            template_key="strat_defend",
+            action="FALL_BACK_DEFEND" if severe else "REGROUP_STRONG_AXIS",
+            reason_code="OUTNUMBERED_GAME" if severe else "SLIGHT_DISADVANTAGE",
+            template_key="strat_defend" if severe else "strat_regroup",
             severity=Severity.ATTENTION if crit else Severity.INFO,
             ttl_seconds=9.0, cooldown_key="strategy",
             urgency=0.55 + u * 0.25, impact=0.75, confidence=0.75,
