@@ -53,6 +53,67 @@ def test_single_output_highest_score_wins_tie_break():
     assert chosen.rule_id == "aaa.rule"
 
 
+def test_coherence_gate_suppresses_contradictory_family():
+    # §11 : après une décision STRATÉGIQUE de repli, une autre famille qui
+    # conseillerait d'avancer/repositionner au front est tue (cohérence).
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    # Cycle 1 : la macro décide FALL_BACK (RETREAT).
+    arb.set_clock(300)
+    strat = _cand("strategy.macro", AdviceCategory.STRATEGY, urgency=0.9, impact=0.9,
+                  severity=Severity.ATTENTION, action="FALL_BACK_DEFEND")
+    assert arb.select([strat], features=_features()).action == "FALL_BACK_DEFEND"
+    # Cycle 2 (peu après) : le placement veut REPOSITIONNER au front (RELOCATE)
+    # -> contredit le repli récent -> supprimé -> silence.
+    arb.set_clock(312)
+    reloc = _cand("positioning.replay_zones", AdviceCategory.POSITIONING,
+                  urgency=0.9, impact=0.9, action="REPOSITION_TO_ZONE")
+    assert arb.select([reloc], features=_features()) is None
+
+
+def test_coherence_gate_allows_coherent_family():
+    # Un conseil d'intention COHÉRENTE avec le repli (ex. jeu prudent) passe.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(300)
+    strat = _cand("strategy.macro", AdviceCategory.STRATEGY, urgency=0.9, impact=0.9,
+                  severity=Severity.ATTENTION, action="FALL_BACK_DEFEND")
+    arb.select([strat], features=_features())
+    arb.set_clock(312)
+    safe = _cand("hp.preservation", AdviceCategory.HP, urgency=0.9, impact=0.9,
+                 action="PLAY_SAFE")
+    assert arb.select([safe], features=_features()) is not None
+
+
+def test_coherence_gate_expires_after_window():
+    # Passé la fenêtre de cohérence, une bascule redevient autorisée.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(300)
+    strat = _cand("strategy.macro", AdviceCategory.STRATEGY, urgency=0.9, impact=0.9,
+                  severity=Severity.ATTENTION, action="FALL_BACK_DEFEND")
+    arb.select([strat], features=_features())
+    # Bien au-delà de coherence_window_s (25 s).
+    arb.set_clock(300 + settings.anti_spam.coherence_window_s + 5)
+    reloc = _cand("positioning.replay_zones", AdviceCategory.POSITIONING,
+                  urgency=0.9, impact=0.9, action="REPOSITION_TO_ZONE")
+    assert arb.select([reloc], features=_features()) is not None
+
+
+def test_strategy_can_revise_its_own_decision():
+    # L'ancre STRATEGY n'est pas suppressible : elle peut passer de repli à push.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(300)
+    strat = _cand("strategy.macro", AdviceCategory.STRATEGY, urgency=0.9, impact=0.9,
+                  severity=Severity.ATTENTION, action="FALL_BACK_DEFEND")
+    arb.select([strat], features=_features())
+    arb.set_clock(360)   # au-delà du cooldown catégorie
+    push = _cand("strategy.macro", AdviceCategory.STRATEGY, urgency=0.9, impact=0.9,
+                 action="PUSH_ADVANTAGE")
+    assert arb.select([push], features=_features()).action == "PUSH_ADVANTAGE"
+
+
 def test_cooldown_blocks_repetition():
     # REC-03 : meme conseil repete -> bloque par le cooldown.
     settings = Settings()

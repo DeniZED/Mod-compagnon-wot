@@ -38,37 +38,7 @@ class ScenarioTimeline:
     ticks: List[StateTick] = field(default_factory=list)
 
 
-# --- Intentions grossières -------------------------------------------------- #
-ADVANCE = "ADVANCE"
-RETREAT = "RETREAT"
-RELOCATE = "RELOCATE"
-CAP = "CAP"
-CAUTION = "CAUTION"
-OTHER = "OTHER"
-
-# Intentions OPPOSÉES : leur cohabitation rapprochée = contradiction.
-_OPPOSED = {(ADVANCE, RETREAT), (RETREAT, ADVANCE)}
-
-
-def intent_of(action: Optional[str]) -> str:
-    """Réduit un libellé d'action à une intention tactique grossière."""
-    if not action:
-        return OTHER
-    a = action.upper()
-    if a.startswith("PUSH") or "INITIATIVE" in a:
-        return ADVANCE
-    if "DISENGAGE" in a or "FALL_BACK" in a or "RETREAT" in a \
-            or "REGROUP" in a or "OUTNUMBERED" in a:
-        return RETREAT
-    if "RELOCATE" in a or "REPOSITION" in a or a.startswith("OPEN") \
-            or "DIRECTION" in a:
-        return RELOCATE
-    if "CAP" in a:
-        return CAP
-    if "SAFE" in a or "PRESERVE" in a:
-        return CAUTION
-    return OTHER
-
-
-def is_contradiction(intent_a: str, intent_b: str) -> bool:
-    return (intent_a, intent_b) in _OPPOSED
+# Intentions : source unique dans core.intent (partagée avec l'arbitre).
+from ..core.intent import (  # noqa: E402,F401
+    ADVANCE, CAP, CAUTION, OTHER, RELOCATE, RETREAT,
+    intent_of, is_contradiction)

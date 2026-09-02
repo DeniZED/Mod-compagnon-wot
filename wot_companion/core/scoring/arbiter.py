@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from ...settings import AdviceCategory, Settings, Severity
 from ..advice import AdviceObject, CandidateAdvice
 from ..context.features import BattlePhase, Features
+from ..intent import intent_of, strategic_suppresses
 from .scorer import Scorer
 
 logger = logging.getLogger("wot_companion.arbiter")
@@ -37,6 +38,10 @@ class CooldownState:
     recent: list[tuple[float, str, str, str]] = field(default_factory=list)  # (t, rule, cat, action)
     early_shown: int = 0
     last_positive_s: float | None = None
+    # Dernière décision STRATÉGIQUE affichée (intention + instant) : sert de garde
+    # de cohérence pour taire les autres familles qui la contrediraient (§11).
+    last_strategic_intent: str | None = None
+    last_strategic_intent_s: float | None = None
 
     def reset(self) -> None:
         self.last_global_s = None
@@ -45,6 +50,8 @@ class CooldownState:
         self.recent.clear()
         self.early_shown = 0
         self.last_positive_s = None
+        self.last_strategic_intent = None
+        self.last_strategic_intent_s = None
 
 
 class AdviceArbiter:
@@ -125,6 +132,15 @@ class AdviceArbiter:
                 diag.append("%s: mode silencieux" % cand.rule_id)
                 continue
 
+            # Cohérence inter-familles (§11) : une décision stratégique récente
+            # (décrocher/pousser/cap) fait taire les autres familles dont
+            # l'intention la contredirait. La famille STRATEGY reste libre de
+            # réviser sa propre décision (elle est l'ancre, pas suppressible).
+            if self._contradicts_strategic(cand, now_s):
+                diag.append("%s: incoherent avec strat '%s'"
+                            % (cand.rule_id, self.state.last_strategic_intent))
+                continue
+
             # Les reactions gerent leur propre cadence (min_interval_s) : on ne
             # leur applique pas la penalite de repetition, sinon elles ne
             # pourraient jamais se repeter sous le feu.
@@ -193,6 +209,20 @@ class AdviceArbiter:
         logger.info("ARBITRE t=%.0f: %s recale. Gagnant=%s | %s",
                     now_s, self._WATCH, win, " ; ".join(diag))
 
+    def _contradicts_strategic(self, cand: CandidateAdvice, now_s: float) -> bool:
+        """Vrai si `cand` (hors STRATEGY) contredit une décision stratégique
+        encore fraîche — garde de cohérence inter-familles (§11)."""
+        st = self.state
+        window = self.settings.anti_spam.coherence_window_s
+        if window <= 0 or st.last_strategic_intent is None:
+            return False
+        if cand.category is AdviceCategory.STRATEGY:
+            return False           # l'ancre peut réviser sa propre décision
+        if st.last_strategic_intent_s is None \
+                or now_s - st.last_strategic_intent_s > window:
+            return False
+        return strategic_suppresses(st.last_strategic_intent, intent_of(cand.action))
+
     def _commit(self, cand: CandidateAdvice, now_s: float, phase: BattlePhase) -> None:
         st = self.state
         st.last_global_s = now_s
@@ -201,6 +231,10 @@ class AdviceArbiter:
         st.recent.append((now_s, cand.rule_id, cand.category.value, cand.action))
         if cand.category is AdviceCategory.POSITIVE:
             st.last_positive_s = now_s
+        # Mémorise l'intention stratégique pour le garde de cohérence.
+        if cand.category is AdviceCategory.STRATEGY:
+            st.last_strategic_intent = intent_of(cand.action)
+            st.last_strategic_intent_s = now_s
         if phase is BattlePhase.EARLY and cand.severity is not Severity.CRITICAL:
             st.early_shown += 1
 

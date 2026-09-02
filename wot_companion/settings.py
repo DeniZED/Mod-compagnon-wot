@@ -68,6 +68,11 @@ class AntiSpamSettings:
     # joueur "un seul commentaire puis plus rien"). A 38, les conseils de milieu
     # de partie remontent, tout en restant filtres par les cooldowns.
     min_score_threshold: int = 38
+    # Cohérence inter-familles (§11) : après une décision STRATÉGIQUE (décrocher,
+    # pousser, cap...), pendant cette fenêtre on TAIT les conseils d'autres
+    # familles dont l'intention la contredirait (ex. « repositionne au front »
+    # juste après « décroche »). 0 pour désactiver le garde-fou.
+    coherence_window_s: float = 25.0
 
 
 @dataclass
