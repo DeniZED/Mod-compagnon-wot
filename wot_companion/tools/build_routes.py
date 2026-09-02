@@ -39,6 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("paths", nargs="+", help="Fichiers .wotreplay ou dossiers.")
     ap.add_argument("--tk", default="tk_base.json",
                     help="Base de zones existante (fournit les bornes d'arène).")
+    ap.add_argument("--sectors", default=None,
+                    help="Fichier de secteurs auto (build_sectors) : couvre toutes "
+                         "les cartes, pas seulement les pilotes annotés à la main.")
     ap.add_argument("-o", "--out", default="routes.json", help="JSON de sortie.")
     ap.add_argument("--performers", type=int, default=5)
     ap.add_argument("--winners-only", action="store_true")
@@ -49,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     resolver = SectorResolver.from_dir()
+    if args.sectors:
+        resolver.merge_combined(args.sectors)   # ajoute les cartes auto-générées
     if not resolver.graphs:
         print("Aucune carte annotée (tactical_map/data/) — rien à extraire.")
         return 1

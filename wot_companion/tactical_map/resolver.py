@@ -78,6 +78,28 @@ class SectorResolver:
                     logger.exception("Annotation carte illisible: %s", fp)
         return cls(graphs)
 
+    def merge_combined(self, path) -> "SectorResolver":
+        """Ajoute les cartes d'un fichier combiné multi-cartes (auto-généré) SANS
+        écraser celles déjà présentes (les annotations manuelles restent
+        prioritaires). Retourne self pour chaîner."""
+        p = Path(path)
+        if not p.is_file():
+            return self
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            logger.exception("Fichier de secteurs combiné illisible: %s", p)
+            return self
+        for map_id, d in (data.get("maps") or {}).items():
+            cmap = canonical_map_id(map_id)
+            if cmap in self.graphs:
+                continue                       # annotation manuelle prioritaire
+            try:
+                self.graphs[cmap] = _graph_from_json({**d, "map_id": map_id})
+            except (ValueError, KeyError):
+                logger.exception("Carte auto illisible: %s", map_id)
+        return self
+
     def graph(self, map_id) -> Optional[MapGraph]:
         return self.graphs.get(canonical_map_id(map_id))
 
