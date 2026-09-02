@@ -1,0 +1,13 @@
+{
+  "name": "cap_finish_008",
+  "map_id": "prokhorovka",
+  "bounds": [-500, -500, 500, 500],
+  "vehicle_class": "medium",
+  "ticks": [
+    {"t": 500, "own": [0, 0], "allies": [[50, 0]], "enemies_spotted": [[80, 0]],
+     "hp": 0.8, "allies_alive": 3, "enemies_alive": 1}
+  ],
+  "acceptable_intents": ["CAP"],
+  "forbidden_intents": ["ADVANCE", "RETREAT"],
+  "expect_silence": false
+}

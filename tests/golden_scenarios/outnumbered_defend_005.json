@@ -1,0 +1,13 @@
+{
+  "name": "outnumbered_defend_005",
+  "map_id": "prokhorovka",
+  "bounds": [-500, -500, 500, 500],
+  "vehicle_class": "heavy",
+  "ticks": [
+    {"t": 340, "own": [0, 0], "allies": [[60, 0]], "enemies_spotted": [[50, 50]],
+     "hp": 0.7, "allies_alive": 4, "enemies_alive": 9}
+  ],
+  "acceptable_intents": ["RETREAT"],
+  "forbidden_intents": ["ADVANCE"],
+  "expect_silence": false
+}

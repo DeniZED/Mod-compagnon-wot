@@ -1,0 +1,13 @@
+{
+  "name": "low_hp_disengage_006",
+  "map_id": "prokhorovka",
+  "bounds": [-500, -500, 500, 500],
+  "vehicle_class": "medium",
+  "ticks": [
+    {"t": 300, "own": [0, 0], "allies": [[200, 0]], "enemies_spotted": [[40, 0]],
+     "hp": 0.12, "allies_alive": 6, "enemies_alive": 6}
+  ],
+  "acceptable_intents": ["RETREAT"],
+  "forbidden_intents": ["ADVANCE"],
+  "expect_silence": false
+}

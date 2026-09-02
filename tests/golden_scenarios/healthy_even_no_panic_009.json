@@ -1,0 +1,14 @@
+{
+  "name": "healthy_even_no_panic_009",
+  "map_id": "prokhorovka",
+  "bounds": [-500, -500, 500, 500],
+  "vehicle_class": "medium",
+  "note": "Egalite, en forme, au contact : le moteur ne doit ni faire paniquer (RETREAT) ni pousser tete baissee (ADVANCE).",
+  "ticks": [
+    {"t": 300, "own": [0, 0], "allies": [[60, 0]], "enemies_spotted": [[70, 0]],
+     "hp": 0.9, "allies_alive": 7, "enemies_alive": 7}
+  ],
+  "acceptable_intents": [],
+  "forbidden_intents": ["ADVANCE", "RETREAT"],
+  "expect_silence": false
+}

@@ -1,0 +1,13 @@
+{
+  "name": "strong_local_push_007",
+  "map_id": "prokhorovka",
+  "bounds": [-500, -500, 500, 500],
+  "vehicle_class": "medium",
+  "ticks": [
+    {"t": 300, "own": [300, 300], "allies": [[330, 300], [340, 310]],
+     "enemies_spotted": [[360, 360]], "hp": 0.9, "allies_alive": 9, "enemies_alive": 5}
+  ],
+  "acceptable_intents": ["ADVANCE"],
+  "forbidden_intents": ["RETREAT"],
+  "expect_silence": false
+}
