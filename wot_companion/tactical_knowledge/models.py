@@ -172,10 +172,16 @@ class PositionCluster:
 
 @dataclass
 class RouteCluster:
-    """Trajet fréquent des bons joueurs (§23) : suite ordonnée de zones."""
+    """Trajet fréquent des bons joueurs (§9, §23) : suite ordonnée de SECTEURS.
+
+    Extrait des replays : « à ce spawn, avec ce type de char, les bons enchaînent
+    tel secteur puis tel autre ». Jamais une position ennemie. `sectors` est la
+    signature (IDs de secteurs du Tactical Map Model) ; `waypoints` les points
+    représentatifs (centroïdes des passages) pour l'affichage/radar.
+    """
     map_id: str
     spawn: str
-    archetype: Archetype
+    archetype: Optional[Archetype] = None
     waypoints: List[XZ] = field(default_factory=list)
     usage_rate: float = 0.0
     performance: float = 0.0
@@ -184,6 +190,9 @@ class RouteCluster:
     assist: float = 0.0
     sample_size: int = 0
     confidence: float = 0.0
+    phase: str = "early"                          # phase de DÉBUT de route
+    vehicle_class: Optional[VehicleClass] = None
+    sectors: List[str] = field(default_factory=list)  # séquence d'IDs de secteurs
 
     def __post_init__(self) -> None:
         if self.sample_size < 0:
