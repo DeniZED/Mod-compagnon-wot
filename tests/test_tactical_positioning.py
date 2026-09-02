@@ -10,12 +10,13 @@ from wot_companion.tactical_knowledge.models import Archetype, PositionCluster
 from wot_companion.tactical_knowledge.store import TacticalKnowledgeBase
 
 
-def _rc(kb, own=(0.0, 0.0), map_id="ruinberg", vclass="medium", t=60.0):
+def _rc(kb, own=(0.0, 0.0), map_id="ruinberg", vclass="medium", t=60.0, hp=1.0):
     ctx = BattleContext(battle_id="b", start_ms=0)
     ctx.elapsed_s = t
     ctx.own_pos = own
     ctx.map_id = map_id
     ctx.vehicle_class = vclass
+    ctx.hp_ratio = hp
     feats = FeatureBuilder().build(ctx)
     return RuleContext(battle=ctx, features=feats, knowledge=None, tactical_kb=kb)
 
@@ -106,6 +107,16 @@ def test_silent_in_late_phase():
     kb = TacticalKnowledgeBase([_zone(center=(150.0, 0.0), phase="late")])
     rule = TacticalPositioningRule()
     assert rule.evaluate(_rc(kb, own=(0.0, 0.0), t=600.0)) == []
+
+
+def test_silent_when_hp_critical():
+    # HP très bas : pas de bascule vers une zone de farm (la survie prime,
+    # évite d'ordonner "repositionne au front" pendant qu'on doit décrocher).
+    kb = TacticalKnowledgeBase([_zone(center=(150.0, 0.0), phase="mid")])
+    rule = TacticalPositioningRule()
+    assert rule.evaluate(_rc(kb, own=(0.0, 0.0), t=200.0, hp=0.07)) == []
+    # HP corrects : le conseil sort normalement.
+    assert rule.evaluate(_rc(kb, own=(0.0, 0.0), t=200.0, hp=0.8))
 
 
 def test_low_confidence_zone_is_ignored():

@@ -32,6 +32,10 @@ _AWAY_FACTOR = 1.8
 _MIN_CONFIDENCE = 0.3
 # Portee de recherche autour du joueur.
 _SEARCH_RADIUS_M = 250.0
+# En dessous de ce ratio de HP, on NE renvoie PAS le joueur vers une zone de farm :
+# la survie prime et les familles réaction/HP/décrochage prennent le relais. Éviter
+# cette incohérence ("décroche" d'un côté, "repositionne-toi au front" de l'autre).
+_SURVIVAL_HP = 0.30
 
 _PHASE_KEY = {
     BattlePhase.EARLY: "early",
@@ -76,6 +80,10 @@ class TacticalPositioningRule(Rule):
         if phase_key is None or rc.features.phase is BattlePhase.LATE:
             self._diag(rc, "phase_late")
             return []                          # fin de partie : la survie prime
+        hp = getattr(b, "hp_ratio", None)
+        if hp is not None and hp < _SURVIVAL_HP:
+            self._diag(rc, "hp_survie hp=%.2f<%.2f (survie prime)" % (hp, _SURVIVAL_HP))
+            return []                          # trop bas : pas de bascule au front
 
         cmap = canonical_map_id(b.map_id)
         vclass = self._vehicle_class(b.vehicle_class)
