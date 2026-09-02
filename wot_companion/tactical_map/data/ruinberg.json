@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "map_id": "ruinberg",
+  "note": "Coords normalisees (fx: 0 ouest -> 1 est ; fz: 0 nord -> 1 sud). Ville dense a l'est (brawl/corridors), champ ouvert a l'ouest (sniper), eglise/centre en transition. Annotation pilote large, a affiner en jeu.",
+  "sectors": [
+    {
+      "id": "city_east",
+      "type": "city",
+      "polygon": [[0.55, 0.10], [1.0, 0.10], [1.0, 0.90], [0.55, 0.90]],
+      "tags": ["city", "brawl", "corridor", "heavy", "close"],
+      "values": {"exposure": 0.25, "cover": 0.85, "sniper_value": 0.2,
+                 "spotting_value": 0.3, "brawl_value": 0.9,
+                 "hull_down_value": 0.45, "rotation_value": 0.4,
+                 "retreat_value": 0.45, "risk_level": 0.6}
+    },
+    {
+      "id": "open_west",
+      "type": "open_field",
+      "polygon": [[0.0, 0.10], [0.40, 0.10], [0.40, 0.90], [0.0, 0.90]],
+      "tags": ["open", "sniper", "spotting", "medium", "td"],
+      "values": {"exposure": 0.85, "cover": 0.25, "sniper_value": 0.85,
+                 "spotting_value": 0.8, "brawl_value": 0.15,
+                 "hull_down_value": 0.35, "rotation_value": 0.5,
+                 "retreat_value": 0.55, "risk_level": 0.65}
+    },
+    {
+      "id": "center_church",
+      "type": "crossing",
+      "polygon": [[0.40, 0.20], [0.55, 0.20], [0.55, 0.80], [0.40, 0.80]],
+      "tags": ["contested", "church", "crossing"],
+      "values": {"exposure": 0.7, "cover": 0.45, "sniper_value": 0.5,
+                 "spotting_value": 0.6, "brawl_value": 0.5,
+                 "hull_down_value": 0.4, "rotation_value": 0.75,
+                 "retreat_value": 0.4, "risk_level": 0.75}
+    },
+    {
+      "id": "north_base",
+      "type": "base_defense",
+      "polygon": [[0.25, 0.0], [0.85, 0.0], [0.85, 0.15], [0.25, 0.15]],
+      "tags": ["base", "defense", "north"],
+      "values": {"exposure": 0.4, "cover": 0.5, "brawl_value": 0.4,
+                 "retreat_value": 0.7, "rotation_value": 0.5, "risk_level": 0.4}
+    },
+    {
+      "id": "south_base",
+      "type": "base_defense",
+      "polygon": [[0.25, 0.85], [0.85, 0.85], [0.85, 1.0], [0.25, 1.0]],
+      "tags": ["base", "defense", "south"],
+      "values": {"exposure": 0.4, "cover": 0.5, "brawl_value": 0.4,
+                 "retreat_value": 0.7, "rotation_value": 0.5, "risk_level": 0.4}
+    }
+  ],
+  "edges": [
+    {"from": "open_west", "to": "center_church", "distance": 0.35, "exposure": 0.8},
+    {"from": "center_church", "to": "open_west", "distance": 0.35, "exposure": 0.8},
+    {"from": "center_church", "to": "city_east", "distance": 0.4, "exposure": 0.5},
+    {"from": "city_east", "to": "center_church", "distance": 0.4, "exposure": 0.5},
+    {"from": "city_east", "to": "north_base", "distance": 0.5, "exposure": 0.4},
+    {"from": "open_west", "to": "south_base", "distance": 0.5, "exposure": 0.5}
+  ]
+}
