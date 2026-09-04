@@ -30,6 +30,11 @@ _DIRS = [
 ]
 # Probabilité minimale du secteur suivant pour oser un conseil (anti-bruit).
 _MIN_PROB = 0.30
+# Nombre MINIMAL de références (joueurs distincts) derrière le choix. Sans ça,
+# une transition vue par 3 joueurs ressort « 100 % » et donne un conseil
+# affirmatif mais non fiable (§14 : faible confiance -> silence). C'est le cas du
+# faux « sud-est 100 % » vu en jeu : trop peu de données.
+_MIN_SAMPLE = 20
 # Sous ce ratio de HP, la survie prime : pas de conseil de bascule playbook.
 _SURVIVAL_HP = 0.30
 # Distance mini (m) au centre du secteur cible pour juger qu'on n'y est pas.
@@ -43,22 +48,33 @@ def _cardinal(dx: float, dz: float) -> str:
 
 
 def select_target(resolver, prior, map_id, own_pos, bounds, vehicle_class,
-                  min_prob: float = _MIN_PROB):
+                  min_prob: float = _MIN_PROB, min_sample: int = _MIN_SAMPLE):
     """Cible playbook partagée (règle + radar) : depuis le secteur courant, le
-    secteur suivant privilégié par les bons. Retourne (sector, center_monde, prob)
-    ou None si rien de net. `sector` est l'objet Sector cible (pour le côté/la
-    boîte), `center` sa position monde (pour direction/case)."""
+    secteur suivant privilégié par les bons. Retourne (sector, center_monde, prob,
+    sample) ou None si rien de FIABLE (prob suffisante ET assez de références).
+    `sector` est l'objet Sector cible (pour le côté/la boîte), `center` sa
+    position monde (pour direction/case)."""
     if resolver is None or prior is None or not own_pos or not map_id:
         return None
     cmap = canonical_map_id(map_id)
     current = resolver.resolve(cmap, own_pos, bounds)
     if current is None:
         return None
-    options = prior.next_sector(cmap, current.id, vehicle_class)
-    if not options:
-        return None
-    top = options[0]
-    if top.sector == current.id or top.prob < min_prob:
+    def _pick(options):
+        if not options:
+            return None
+        t = options[0]
+        # Fiabilité : assez fréquent ET assez de références (sinon « 100 % » trompeur).
+        if t.sector == current.id or t.prob < min_prob or t.sample < min_sample:
+            return None
+        return t
+
+    # D'abord la donnée SPÉCIFIQUE à la classe (les lights ne jouent pas comme les
+    # lourds) ; si elle est trop maigre, on retombe sur l'agrégat toutes classes.
+    top = _pick(prior.next_sector(cmap, current.id, vehicle_class))
+    if top is None and vehicle_class is not None:
+        top = _pick(prior.next_sector(cmap, current.id, None))
+    if top is None:
         return None
     center = resolver.sector_world_center(cmap, top.sector, bounds)
     if center is None:
@@ -67,7 +83,7 @@ def select_target(resolver, prior, map_id, own_pos, bounds, vehicle_class,
     sector = g.sector(top.sector) if g is not None else None
     if sector is None:
         return None
-    return sector, center, top.prob
+    return sector, center, top.prob, top.sample
 
 
 class PlaybookRule(Rule):
@@ -89,7 +105,7 @@ class PlaybookRule(Rule):
                               b.own_pos, bounds, b.vehicle_class)
         if found is None:
             return []
-        sector, target, prob = found
+        sector, target, prob, sample = found
         dx, dz = target[0] - b.own_pos[0], target[1] - b.own_pos[1]
 
         # Case principale SANS sous-quadrant : le centroïde d'un secteur tombe sur
@@ -109,7 +125,7 @@ class PlaybookRule(Rule):
                 urgency=0.55, impact=0.7, confidence=min(0.8, 0.4 + prob * 0.4),
                 context={"side": side,
                          "cell_suffix": (" (case %s)" % cell) if cell else "",
-                         "pct": pct})]
+                         "pct": pct, "sample": sample})]
         # MILIEU DE PARTIE : bascule vers le secteur suivant (direction + case).
         dist = math.hypot(dx, dz)
         if dist < _MIN_MOVE_M:
@@ -122,4 +138,5 @@ class PlaybookRule(Rule):
             urgency=0.5, impact=0.68, confidence=min(0.8, 0.4 + prob * 0.4),
             context={"direction": _cardinal(dx, dz),
                      "cell_suffix": (" en %s" % cell) if cell else "",
-                     "distance_m": int(round(dist)), "pct": pct})]
+                     "distance_m": int(round(dist)), "pct": pct,
+                     "sample": sample})]

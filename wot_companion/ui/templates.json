@@ -147,13 +147,13 @@
         "silencieux": "Va cap."
     },
     "playbook_opening": {
-        "coach": "Ouverture : privilegie {side}{cell_suffix} — {pct}% des bons y vont. Vois le cadre sur la minimap.",
+        "coach": "Ouverture : privilegie {side}{cell_suffix} — {pct}% des bons ({sample} refs). Vois le cadre sur la minimap.",
         "commandant": "Ouverture : flanc {side}{cell_suffix}.",
-        "detendu": "Au depart, privilegie {side}{cell_suffix} : c'est ce que jouent les bons.",
+        "detendu": "Au depart, privilegie {side}{cell_suffix} : c'est ce que jouent les bons ({sample} refs).",
         "silencieux": "Flanc {side}."
     },
     "playbook_rotate": {
-        "coach": "Bascule : depuis ta zone, les bons enchainent{cell_suffix} ({direction}, ~{distance_m} m) — {pct}% d'entre eux. Suis le mouvement si ton flanc le permet.",
+        "coach": "Bascule : depuis ta zone, les bons enchainent{cell_suffix} ({direction}) — {pct}% ({sample} refs). Suis le mouvement si ton flanc le permet.",
         "commandant": "Enchaine{cell_suffix} ({direction}).",
         "detendu": "La suite logique d'ici, c'est plutot{cell_suffix} ({direction}).",
         "silencieux": "Bascule{cell_suffix} ({direction})."

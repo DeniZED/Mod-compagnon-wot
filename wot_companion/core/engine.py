@@ -254,7 +254,7 @@ class AdviceEngine:
                 found = select_target(self.sector_resolver, self.replay_prior,
                                       ctx.map_id, ctx.own_pos, ctx.map_bounds, vclass)
                 if found is not None:
-                    sector, _c, _p = found
+                    sector = found[0]
                     box = self.sector_resolver.sector_world_bounds(
                         cmap, sector.id, ctx.map_bounds)
                     if box is not None:

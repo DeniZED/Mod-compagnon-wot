@@ -56,6 +56,15 @@ def test_silent_when_already_in_target_sector():
     assert out == []
 
 
+def test_silent_when_thin_sample():
+    # Transition vue par trop peu de joueurs -> "100%" trompeur -> silence (§14).
+    thin = build_priors([RouteCluster(
+        map_id="prokhorovka", spawn="team1", vehicle_class=VehicleClass.MEDIUM,
+        phase="mid", sectors=["west_field", "east_hill"], sample_size=3,
+        performance=0.7)])
+    assert PlaybookRule().evaluate(_rc((-400.0, 0.0), prior=thin)) == []
+
+
 def test_silent_when_low_hp():
     # Bas HP : la survie prime, pas de bascule playbook.
     assert PlaybookRule().evaluate(_rc((-400.0, 0.0), hp=0.15)) == []
