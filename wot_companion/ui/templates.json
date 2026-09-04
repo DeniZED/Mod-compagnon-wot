@@ -146,6 +146,18 @@
         "detendu": "Il en reste peu et vous menez ({allies} vs {enemies}) : file au cap pour finir.",
         "silencieux": "Va cap."
     },
+    "playbook_opening": {
+        "coach": "Ouverture : les bons partent{cell_suffix} ({direction}, ~{distance_m} m) depuis ta zone — {pct}% d'entre eux. Oriente-toi par la.",
+        "commandant": "Ouverture : file{cell_suffix} ({direction}).",
+        "detendu": "Pour commencer, les bons vont plutot{cell_suffix} ({direction}) d'ici. A voir.",
+        "silencieux": "Ouverture{cell_suffix} ({direction})."
+    },
+    "playbook_rotate": {
+        "coach": "Bascule : depuis ta zone, les bons enchainent{cell_suffix} ({direction}, ~{distance_m} m) — {pct}% d'entre eux. Suis le mouvement si ton flanc le permet.",
+        "commandant": "Enchaine{cell_suffix} ({direction}).",
+        "detendu": "La suite logique d'ici, c'est plutot{cell_suffix} ({direction}).",
+        "silencieux": "Bascule{cell_suffix} ({direction})."
+    },
     "pos_replay_opening": {
         "coach": "Ouverture : oriente-toi{cell_suffix} ({direction}, ~{distance_m} m). Les bons y vont souvent a ce spawn ({popularity_pct}% des references).",
         "commandant": "Ouverture : pars{cell_suffix} ({direction}).",

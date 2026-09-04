@@ -125,3 +125,21 @@ class SectorResolver:
         if norm is None:
             return None
         return g.locate_norm(norm[0], norm[1])
+
+    def sector_world_center(self, map_id, sector_id, bounds):
+        """Centre MONDE (x,z) d'un secteur, ou None (carte/secteur/bornes absents).
+
+        Inverse de `_normalize` : convertit le centroïde normalisé du secteur en
+        coordonnées d'arène, pour donner une direction/case vers ce secteur.
+        """
+        g = self.graph(map_id)
+        if g is None or bounds is None or len(bounds) != 4:
+            return None
+        sec = g.sector(sector_id)
+        if sec is None:
+            return None
+        minx, minz, maxx, maxz = bounds
+        if maxx <= minx or maxz <= minz:
+            return None
+        fx, fz = sec.centroid_norm()
+        return (minx + fx * (maxx - minx), maxz - fz * (maxz - minz))

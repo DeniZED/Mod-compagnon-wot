@@ -67,6 +67,12 @@ class Sector:
             raise ValueError("un secteur exige un polygone d'au moins 3 sommets")
         self.polygon = [(float(x), float(z)) for x, z in self.polygon]
 
+    def centroid_norm(self) -> FXZ:
+        """Centroïde (moyenne des sommets) en coordonnées normalisées."""
+        n = len(self.polygon)
+        return (sum(p[0] for p in self.polygon) / n,
+                sum(p[1] for p in self.polygon) / n)
+
     def contains_norm(self, fx: float, fz: float) -> bool:
         """Point-dans-polygone (ray casting) en coordonnées normalisées."""
         pts = self.polygon

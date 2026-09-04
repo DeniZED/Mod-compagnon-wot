@@ -36,6 +36,8 @@ class AdviceEngine:
         journal: AdviceJournal | None = None,
         fairplay: FairPlayFilter | None = None,
         tactical_kb=None,
+        sector_resolver=None,
+        replay_prior=None,
     ) -> None:
         self.settings = settings or Settings()
         self.knowledge = knowledge or KnowledgeBase()
@@ -45,6 +47,10 @@ class AdviceEngine:
             from ..tactical_knowledge.store import TacticalKnowledgeBase
             tactical_kb = TacticalKnowledgeBase()
         self.tactical_kb = tactical_kb
+        # Tactical Map Model + priors de jeu (optionnels) : le moteur fonctionne
+        # sans (les règles concernées restent silencieuses).
+        self.sector_resolver = sector_resolver
+        self.replay_prior = replay_prior
         self.fairplay = fairplay or FairPlayFilter(audit=True)
         self.scorer = Scorer(self.settings.scoring)
         self.arbiter = AdviceArbiter(self.settings, self.scorer)
@@ -154,6 +160,8 @@ class AdviceEngine:
             session_objective=self.settings.session_objective,
             player_profile=self.player_profile,
             tactical_kb=self.tactical_kb,
+            sector_resolver=self.sector_resolver,
+            replay_prior=self.replay_prior,
         )
 
         candidates = []

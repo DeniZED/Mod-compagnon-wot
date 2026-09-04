@@ -41,6 +41,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="Chemin du JSON de zones (build_tk). Memorise : les "
                              "conseils de placement issus des replays s'activent. "
                              "Passer \"\" (vide) pour desactiver.")
+    parser.add_argument("--sectors", default=None,
+                        help="Chemin du JSON de secteurs (build_sectors) : etend le "
+                             "modele de carte aux 72 cartes. Memorise. \"\" pour desactiver.")
+    parser.add_argument("--replay-prior", default=None,
+                        help="Chemin du JSON de priors (build_priors) : active les "
+                             "conseils \"ou vont les bons depuis ici\". Memorise. "
+                             "\"\" pour desactiver.")
     parser.add_argument("--overlay", choices=["console", "tk", "none"], default=None,
                         help="Affichage des conseils : console, tk (overlay graphique "
                              "in-game), none. Memorise : par defaut, reprend le dernier "
@@ -115,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
         settings.session_objective = args.objective or None
     if args.tactical_kb is not None:
         settings.tactical_kb_path = args.tactical_kb or None
+    if args.sectors is not None:
+        settings.sectors_path = args.sectors or None
+    if args.replay_prior is not None:
+        settings.replay_prior_path = args.replay_prior or None
     if args.overlay is not None:
         settings.ui.overlay_kind = args.overlay
     overlay_kind = settings.ui.overlay_kind

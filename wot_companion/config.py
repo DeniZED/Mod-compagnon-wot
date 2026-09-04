@@ -50,6 +50,8 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
             "radar_offset_y": s.ui.radar_offset_y,
         },
         "tactical_kb_path": s.tactical_kb_path,
+        "sectors_path": s.sectors_path,
+        "replay_prior_path": s.replay_prior_path,
         "wargaming_api_enabled": s.wargaming_api_enabled,
         "llm_enabled": s.llm_enabled,
         "telemetry_enabled": s.telemetry_enabled,
@@ -105,6 +107,12 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
     if "tactical_kb_path" in cfg:
         v = cfg["tactical_kb_path"]
         s.tactical_kb_path = str(v) if v else None
+    if "sectors_path" in cfg:
+        v = cfg["sectors_path"]
+        s.sectors_path = str(v) if v else None
+    if "replay_prior_path" in cfg:
+        v = cfg["replay_prior_path"]
+        s.replay_prior_path = str(v) if v else None
 
     for flag in ("wargaming_api_enabled", "llm_enabled", "telemetry_enabled"):
         if flag in cfg:

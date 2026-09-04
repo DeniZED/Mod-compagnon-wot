@@ -36,6 +36,8 @@ class CompanionApp:
         self.engine = AdviceEngine(
             settings=self.settings, knowledge=self.knowledge, overlay=overlay,
             tactical_kb=tactical_kb,
+            sector_resolver=self._load_sector_resolver(),
+            replay_prior=self._load_replay_prior(),
         )
         self.trends = TrendAnalyzer(self.store)
         self.trace = BattleTraceRecorder(self.store)
@@ -61,6 +63,40 @@ class CompanionApp:
         except Exception:
             logger.exception("Base tactique illisible (%s) : demarrage sans.", path)
         return TacticalKnowledgeBase()
+
+    def _load_sector_resolver(self):
+        """Tactical Map Model : cartes pilotes (livrées) + secteurs auto (config).
+
+        Toujours au moins les pilotes ; si `sectors_path` est configuré, on ajoute
+        les cartes auto-générées (les pilotes restent prioritaires).
+        """
+        from .tactical_map import SectorResolver
+        resolver = SectorResolver.from_dir()
+        path = self.settings.sectors_path
+        if path:
+            try:
+                resolver.merge_combined(path)
+                logger.info("Secteurs auto charges : %d cartes (%s)",
+                            len(resolver.graphs), path)
+            except Exception:
+                logger.exception("Secteurs auto illisibles (%s) : pilotes seuls.", path)
+        return resolver
+
+    def _load_replay_prior(self):
+        """Priors de jeu (ouverture/transition). Absents => règle playbook muette."""
+        path = self.settings.replay_prior_path
+        if not path:
+            return None
+        from .tactical_knowledge.replay_prior import ReplayPrior
+        try:
+            prior = ReplayPrior.load(path)
+            logger.info("Priors de jeu charges (%s)", path)
+            return prior
+        except FileNotFoundError:
+            logger.warning("Priors introuvables (%s) : demarrage sans.", path)
+        except Exception:
+            logger.exception("Priors illisibles (%s) : demarrage sans.", path)
+        return None
 
     # ---- Mode silence (BAT-008) -------------------------------------------
     def toggle_silence(self) -> bool:

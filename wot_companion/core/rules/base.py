@@ -23,6 +23,8 @@ class RuleContext:
     session_objective: str | None = None
     player_profile: dict | None = None
     tactical_kb: object | None = None   # TacticalKnowledgeBase (zones issues des replays)
+    sector_resolver: object | None = None   # SectorResolver (Tactical Map Model)
+    replay_prior: object | None = None      # ReplayPrior (ouverture/transition)
 
 
 class Rule(ABC):

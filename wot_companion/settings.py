@@ -113,6 +113,12 @@ class Settings:
     # Base tactique (zones efficaces issues des replays). Chemin d'un JSON produit
     # par `tools.build_tk`. None => aucune base, les conseils de zone restent muets.
     tactical_kb_path: str | None = None
+    # Secteurs auto (grille par carte) produits par `tools.build_sectors`. Étend le
+    # Tactical Map Model aux 72 cartes ; None => seules les cartes annotées à la main.
+    sectors_path: str | None = None
+    # Priors de jeu (ouverture/transition) produits par `tools.build_priors`.
+    # None => pas de conseil « où vont les bons depuis ce secteur ».
+    replay_prior_path: str | None = None
 
     # Integrations optionnelles, desactivees par defaut (local-first, section 10.3).
     wargaming_api_enabled: bool = False
