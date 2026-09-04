@@ -114,6 +114,65 @@ def test_strategy_can_revise_its_own_decision():
     assert arb.select([push], features=_features()).action == "PUSH_ADVANTAGE"
 
 
+def test_dedup_suppresses_repeated_reaction():
+    # Fusion v2 : même réaction (famille+action) répétée dans la fenêtre -> tue.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(100)
+    r1 = _cand("reaction.hit_taken", AdviceCategory.REACTION, urgency=0.5,
+               action="USE_ARMOR")
+    r1.min_interval_s = 9.0
+    assert arb.select([r1], features=_features()) is not None
+    arb.set_clock(112)                       # 12 s < message_dedup_s (20)
+    r2 = _cand("reaction.hit_taken", AdviceCategory.REACTION, urgency=0.5,
+               action="USE_ARMOR")
+    r2.min_interval_s = 9.0
+    assert arb.select([r2], features=_features()) is None
+
+
+def test_dedup_allows_severity_escalation():
+    # Un conseil PLUS sévère (INFO -> ATTENTION) passe malgré la fenêtre.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(100)
+    r1 = _cand("reaction.hit_taken", AdviceCategory.REACTION, urgency=0.5,
+               action="USE_ARMOR", severity=Severity.INFO)
+    r1.min_interval_s = 9.0
+    arb.select([r1], features=_features())
+    arb.set_clock(112)
+    esc = _cand("reaction.hit_taken", AdviceCategory.REACTION, urgency=0.7,
+                action="BREAK_CONTACT", severity=Severity.ATTENTION)
+    esc.min_interval_s = 9.0
+    assert arb.select([esc], features=_features()) is not None
+
+
+def test_dedup_suppresses_cross_family_strong_intent():
+    # Playbook dit "bascule" (RELOCATE) ; peu après, macro RELOCATE -> doublon tu.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(150)
+    pb = _cand("playbook.replay_prior", AdviceCategory.POSITIONING, urgency=0.5,
+               action="PLAYBOOK_ROTATE")
+    assert arb.select([pb], features=_features()) is not None
+    arb.set_clock(162)
+    macro = _cand("strategy.macro", AdviceCategory.STRATEGY, urgency=0.6,
+                  action="RELOCATE_TO_ACTION")
+    assert arb.select([macro], features=_features()) is None
+
+
+def test_dedup_expires_after_window():
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    arb.set_clock(100)
+    r1 = _cand("reaction.hit_taken", AdviceCategory.REACTION, action="USE_ARMOR")
+    r1.min_interval_s = 9.0
+    arb.select([r1], features=_features())
+    arb.set_clock(100 + settings.anti_spam.message_dedup_s + 2)
+    r2 = _cand("reaction.hit_taken", AdviceCategory.REACTION, action="USE_ARMOR")
+    r2.min_interval_s = 9.0
+    assert arb.select([r2], features=_features()) is not None
+
+
 def test_cooldown_blocks_repetition():
     # REC-03 : meme conseil repete -> bloque par le cooldown.
     settings = Settings()
@@ -128,8 +187,9 @@ def test_cooldown_blocks_repetition():
 
 
 def test_reaction_min_interval_overrides_category_cooldown():
-    # Une reaction (min_interval_s) doit pouvoir se repeter bien avant le cooldown
-    # de categorie (60 s), mais reste espacee par son intervalle propre.
+    # Une reaction (min_interval_s) reste plus reactive que le cooldown de
+    # categorie (45 s), mais le dedup (fusion v2, 20 s) evite qu'un message
+    # IDENTIQUE se repete toutes les 9 s. Repasse donc apres la fenetre de dedup.
     settings = Settings()
     arb = AdviceArbiter(settings)
     react = _cand("reaction.hit", AdviceCategory.REACTION, urgency=0.6, impact=0.5)
@@ -138,7 +198,9 @@ def test_reaction_min_interval_overrides_category_cooldown():
     assert arb.select([react], features=_features()) is not None
     arb.set_clock(105)  # < intervalle propre -> bloque
     assert arb.select([react], features=_features()) is None
-    arb.set_clock(110)  # >= 9 s -> repasse, bien avant les 60 s de categorie
+    arb.set_clock(112)  # >= 9 s mais < dedup 20 s -> tu (doublon)
+    assert arb.select([react], features=_features()) is None
+    arb.set_clock(125)  # > 20 s -> repasse, bien avant les 45 s de categorie
     assert arb.select([react], features=_features()) is not None
 
 

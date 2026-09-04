@@ -28,8 +28,8 @@ def intent_of(action: Optional[str]) -> str:
     if "DISENGAGE" in a or "FALL_BACK" in a or "RETREAT" in a \
             or "REGROUP" in a or "OUTNUMBERED" in a:
         return RETREAT
-    if "RELOCATE" in a or "REPOSITION" in a or a.startswith("OPEN") \
-            or "DIRECTION" in a:
+    if "RELOCATE" in a or "REPOSITION" in a or "ROTATE" in a \
+            or "PLAYBOOK" in a or a.startswith("OPEN") or "DIRECTION" in a:
         return RELOCATE
     if "CAP" in a:
         return CAP

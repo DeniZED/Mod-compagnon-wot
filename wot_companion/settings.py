@@ -73,6 +73,11 @@ class AntiSpamSettings:
     # familles dont l'intention la contredirait (ex. « repositionne au front »
     # juste après « décroche »). 0 pour désactiver le garde-fou.
     coherence_window_s: float = 25.0
+    # Fusion v2 (§11) : fenêtre de DÉ-DOUBLONNAGE des messages. Dans cet intervalle,
+    # on tait un conseil identique (même famille+action) ou de même intention forte
+    # (avancer/reculer/basculer/cap) déjà donné — SAUF si la sévérité monte
+    # (escalade). Réduit le spam « touché ×3 » et les doublons inter-familles.
+    message_dedup_s: float = 20.0
 
 
 @dataclass

@@ -42,6 +42,9 @@ class CooldownState:
     # de cohérence pour taire les autres familles qui la contrediraient (§11).
     last_strategic_intent: str | None = None
     last_strategic_intent_s: float | None = None
+    # Fusion v2 : signatures récentes affichées (t, category, action, intent, sev_rank)
+    # pour dé-doublonner les messages sur une courte fenêtre.
+    recent_shown: list[tuple[float, str, str, str, int]] = field(default_factory=list)
 
     def reset(self) -> None:
         self.last_global_s = None
@@ -52,6 +55,7 @@ class CooldownState:
         self.last_positive_s = None
         self.last_strategic_intent = None
         self.last_strategic_intent_s = None
+        self.recent_shown.clear()
 
 
 class AdviceArbiter:
@@ -141,6 +145,12 @@ class AdviceArbiter:
                             % (cand.rule_id, self.state.last_strategic_intent))
                 continue
 
+            # Fusion v2 : conseil déjà donné récemment (même message ou même
+            # intention forte), sans escalade de sévérité -> on ne le répète pas.
+            if self._is_redundant(cand, now_s):
+                diag.append("%s: doublon recent (%s)" % (cand.rule_id, cand.action))
+                continue
+
             # Les reactions gerent leur propre cadence (min_interval_s) : on ne
             # leur applique pas la penalite de repetition, sinon elles ne
             # pourraient jamais se repeter sous le feu.
@@ -223,12 +233,42 @@ class AdviceArbiter:
             return False
         return strategic_suppresses(st.last_strategic_intent, intent_of(cand.action))
 
+    # Intentions « fortes » : un doublon d'intention entre familles est du bruit.
+    _STRONG_INTENTS = frozenset({"ADVANCE", "RETREAT", "RELOCATE", "CAP"})
+
+    def _is_redundant(self, cand: CandidateAdvice, now_s: float) -> bool:
+        """Vrai si `cand` répète un conseil récent sans escalade de sévérité (§11).
+
+        Doublon = même (famille, action), ou même intention FORTE (même émise par
+        une autre famille). Un conseil PLUS sévère que le précédent passe toujours
+        (escalade), et le critique n'est jamais bloqué.
+        """
+        win = self.settings.anti_spam.message_dedup_s
+        if win <= 0 or cand.severity is Severity.CRITICAL:
+            return False
+        rank = _SEVERITY_RANK.get(cand.severity, 1)
+        ci = intent_of(cand.action)
+        for t, cat, action, intent, srank in self.state.recent_shown:
+            if now_s - t > win or srank < rank:      # trop vieux, ou escalade
+                continue
+            if cat == cand.category.value and action == cand.action:
+                return True                          # même conseil répété
+            if intent == ci and ci in self._STRONG_INTENTS:
+                return True                          # même intention forte, autre famille
+        return False
+
     def _commit(self, cand: CandidateAdvice, now_s: float, phase: BattlePhase) -> None:
         st = self.state
         st.last_global_s = now_s
         st.last_category_s[cand.category.value] = now_s
         st.last_rule_s[cand.rule_id] = now_s
         st.recent.append((now_s, cand.rule_id, cand.category.value, cand.action))
+        # Signature pour le dé-doublonnage (fenêtre courte, liste bornée).
+        st.recent_shown.append((now_s, cand.category.value, cand.action,
+                                intent_of(cand.action),
+                                _SEVERITY_RANK.get(cand.severity, 1)))
+        if len(st.recent_shown) > 20:
+            del st.recent_shown[:-20]
         if cand.category is AdviceCategory.POSITIVE:
             st.last_positive_s = now_s
         # Mémorise l'intention stratégique pour le garde de cohérence.
