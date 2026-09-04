@@ -243,9 +243,29 @@ class AdviceEngine:
         if extent is None:
             extent = bbox([ctx.own_pos] + list(ctx.ally_positions)
                           + list(ctx.enemy_positions_spotted))
+
+        # Région à ENTOURER : le secteur/side conseillé par le playbook (visuel
+        # sur la minimap, en plus du texte). Silencieux si pas de reco nette.
+        highlights = []
+        if (self.sector_resolver is not None and self.replay_prior is not None
+                and features.phase is not BattlePhase.LATE):
+            try:
+                from .rules.playbook import select_target
+                found = select_target(self.sector_resolver, self.replay_prior,
+                                      ctx.map_id, ctx.own_pos, ctx.map_bounds, vclass)
+                if found is not None:
+                    sector, _c, _p = found
+                    box = self.sector_resolver.sector_world_bounds(
+                        cmap, sector.id, ctx.map_bounds)
+                    if box is not None:
+                        highlights.append(box)
+            except Exception:
+                logger.exception("highlight playbook radar a echoue")
+
         state = build_radar_state(
             extent=extent, own=ctx.own_pos, allies=ctx.ally_positions,
-            enemies_spotted=ctx.enemy_positions_spotted, good_zones=zones)
+            enemies_spotted=ctx.enemy_positions_spotted, good_zones=zones,
+            highlights=highlights)
         try:
             self.overlay.notify_radar(state.as_dict())
         except Exception:

@@ -143,3 +143,24 @@ class SectorResolver:
             return None
         fx, fz = sec.centroid_norm()
         return (minx + fx * (maxx - minx), maxz - fz * (maxz - minz))
+
+    def sector_world_bounds(self, map_id, sector_id, bounds):
+        """Boîte MONDE (xmin, zmin, xmax, zmax) d'un secteur, pour l'entourer sur
+        le radar. None si carte/secteur/bornes absents."""
+        g = self.graph(map_id)
+        if g is None or bounds is None or len(bounds) != 4:
+            return None
+        sec = g.sector(sector_id)
+        if sec is None:
+            return None
+        minx, minz, maxx, maxz = bounds
+        if maxx <= minx or maxz <= minz:
+            return None
+        fxs = [p[0] for p in sec.polygon]
+        fzs = [p[1] for p in sec.polygon]
+        x0 = minx + min(fxs) * (maxx - minx)
+        x1 = minx + max(fxs) * (maxx - minx)
+        # fz=0 -> nord (z max) ; fz=1 -> sud (z min).
+        z_hi = maxz - min(fzs) * (maxz - minz)
+        z_lo = maxz - max(fzs) * (maxz - minz)
+        return (x0, z_lo, x1, z_hi)

@@ -18,7 +18,7 @@ import math
 from ...settings import AdviceCategory, Severity
 from ..advice import CandidateAdvice
 from ..context.features import BattlePhase
-from ..maps import canonical_map_id, grid_cell
+from ..maps import canonical_map_id, flank_label, grid_cell
 from .base import Rule, RuleContext
 
 logger = logging.getLogger("wot_companion.rules.playbook")
@@ -42,17 +42,41 @@ def _cardinal(dx: float, dz: float) -> str:
     return best[1]
 
 
+def select_target(resolver, prior, map_id, own_pos, bounds, vehicle_class,
+                  min_prob: float = _MIN_PROB):
+    """Cible playbook partagée (règle + radar) : depuis le secteur courant, le
+    secteur suivant privilégié par les bons. Retourne (sector, center_monde, prob)
+    ou None si rien de net. `sector` est l'objet Sector cible (pour le côté/la
+    boîte), `center` sa position monde (pour direction/case)."""
+    if resolver is None or prior is None or not own_pos or not map_id:
+        return None
+    cmap = canonical_map_id(map_id)
+    current = resolver.resolve(cmap, own_pos, bounds)
+    if current is None:
+        return None
+    options = prior.next_sector(cmap, current.id, vehicle_class)
+    if not options:
+        return None
+    top = options[0]
+    if top.sector == current.id or top.prob < min_prob:
+        return None
+    center = resolver.sector_world_center(cmap, top.sector, bounds)
+    if center is None:
+        return None
+    g = resolver.graph(cmap)
+    sector = g.sector(top.sector) if g is not None else None
+    if sector is None:
+        return None
+    return sector, center, top.prob
+
+
 class PlaybookRule(Rule):
     id = "playbook.replay_prior"
     category = AdviceCategory.POSITIONING.value
     dependencies = ("POSITIONS.own", "MAP_INFO.map_id", "PLAYER_VEHICLE.class")
 
     def evaluate(self, rc: RuleContext) -> list[CandidateAdvice]:
-        resolver = rc.sector_resolver
-        prior = rc.replay_prior
         b = rc.battle
-        if resolver is None or prior is None or b.own_pos is None or not b.map_id:
-            return []
         # Fin de partie : la survie/le cap priment, pas la bascule playbook.
         if rc.features.phase is BattlePhase.LATE:
             return []
@@ -60,42 +84,42 @@ class PlaybookRule(Rule):
         if hp is not None and hp < _SURVIVAL_HP:
             return []
 
-        cmap = canonical_map_id(b.map_id)
         bounds = b.map_bounds
-        current = resolver.resolve(cmap, b.own_pos, bounds)
-        if current is None:
+        found = select_target(rc.sector_resolver, rc.replay_prior, b.map_id,
+                              b.own_pos, bounds, b.vehicle_class)
+        if found is None:
             return []
-
-        vclass = b.vehicle_class
-        options = prior.next_sector(cmap, current.id, vclass)
-        if not options:
-            return []
-        top = options[0]
-        # Déjà dans le secteur conseillé, ou signal trop faible -> silence.
-        if top.sector == current.id or top.prob < _MIN_PROB:
-            return []
-
-        target = resolver.sector_world_center(cmap, top.sector, bounds)
-        if target is None:
-            return []
+        sector, target, prob = found
         dx, dz = target[0] - b.own_pos[0], target[1] - b.own_pos[1]
+
+        # Case principale SANS sous-quadrant : le centroïde d'un secteur tombe sur
+        # une frontière de grille, la sous-case y est un artefact (toujours « -7 »).
+        cell = grid_cell(target, bounds, sub=False)
+        opening = rc.features.phase is BattlePhase.EARLY
+        pct = int(round(prob * 100))
+        if opening:
+            # OUVERTURE : on nomme un CÔTÉ absolu (flanc) à privilégier, pas un
+            # point proche relatif — plus clair et plus utile en début de partie.
+            side = flank_label(*sector.centroid_norm())
+            return [CandidateAdvice(
+                rule_id=self.id, category=AdviceCategory.POSITIONING,
+                action="PLAYBOOK_OPENING", reason_code="REPLAY_PRIOR_OPENING",
+                template_key="playbook_opening", severity=Severity.INFO,
+                ttl_seconds=8.0, cooldown_key="playbook",
+                urgency=0.55, impact=0.7, confidence=min(0.8, 0.4 + prob * 0.4),
+                context={"side": side,
+                         "cell_suffix": (" (case %s)" % cell) if cell else "",
+                         "pct": pct})]
+        # MILIEU DE PARTIE : bascule vers le secteur suivant (direction + case).
         dist = math.hypot(dx, dz)
         if dist < _MIN_MOVE_M:
             return []
-
-        cell = grid_cell(target, bounds)
-        opening = rc.features.phase is BattlePhase.EARLY
         return [CandidateAdvice(
             rule_id=self.id, category=AdviceCategory.POSITIONING,
-            action="PLAYBOOK_OPENING" if opening else "PLAYBOOK_ROTATE",
-            reason_code="REPLAY_PRIOR_TRANSITION",
-            template_key="playbook_opening" if opening else "playbook_rotate",
-            severity=Severity.INFO, ttl_seconds=8.0, cooldown_key="playbook",
-            urgency=0.5, impact=0.68, confidence=min(0.8, 0.4 + top.prob * 0.4),
-            context={
-                "direction": _cardinal(dx, dz),
-                "cell_suffix": (" en %s" % cell) if cell else "",
-                "distance_m": int(round(dist)),
-                "pct": int(round(top.prob * 100)),
-            },
-        )]
+            action="PLAYBOOK_ROTATE", reason_code="REPLAY_PRIOR_TRANSITION",
+            template_key="playbook_rotate", severity=Severity.INFO,
+            ttl_seconds=8.0, cooldown_key="playbook",
+            urgency=0.5, impact=0.68, confidence=min(0.8, 0.4 + prob * 0.4),
+            context={"direction": _cardinal(dx, dz),
+                     "cell_suffix": (" en %s" % cell) if cell else "",
+                     "distance_m": int(round(dist)), "pct": pct})]

@@ -64,6 +64,8 @@ class RadarState:
     enemies: List[XZ] = field(default_factory=list)   # SPOTTÉS uniquement
     zones: List[RadarZone] = field(default_factory=list)
     route: List[XZ] = field(default_factory=list)     # own -> zone conseillée
+    # Régions à ENTOURER (secteur/side conseillé) : (xmin, zmin, xmax, zmax) monde.
+    highlights: List[Tuple[float, float, float, float]] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -74,6 +76,7 @@ class RadarState:
             "zones": [{"center": list(z.center), "radius": z.radius,
                        "kind": z.kind, "label": z.label} for z in self.zones],
             "route": [list(p) for p in self.route],
+            "highlights": [list(h) for h in self.highlights],
         }
 
 
@@ -96,8 +99,10 @@ def build_radar_state(
     enemies_spotted: Sequence[XZ],
     good_zones: Sequence[RadarZone],
     danger_zones: Sequence[RadarZone] = (),
+    highlights: Sequence[Tuple[float, float, float, float]] = (),
 ) -> RadarState:
-    """Assemble l'état radar. La route relie la position propre à la 1re zone."""
+    """Assemble l'état radar. La route relie la position propre à la 1re zone.
+    `highlights` : régions monde (xmin,zmin,xmax,zmax) à entourer sur la minimap."""
     zones = list(good_zones) + list(danger_zones)
     route: List[XZ] = []
     if own is not None and good_zones:
@@ -106,5 +111,5 @@ def build_radar_state(
         extent=extent, own=(tuple(own) if own else None),
         allies=[tuple(a) for a in allies],
         enemies=[tuple(e) for e in enemies_spotted],
-        zones=zones, route=route,
+        zones=zones, route=route, highlights=[tuple(h) for h in highlights],
     )

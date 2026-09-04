@@ -147,10 +147,10 @@
         "silencieux": "Va cap."
     },
     "playbook_opening": {
-        "coach": "Ouverture : les bons partent{cell_suffix} ({direction}, ~{distance_m} m) depuis ta zone — {pct}% d'entre eux. Oriente-toi par la.",
-        "commandant": "Ouverture : file{cell_suffix} ({direction}).",
-        "detendu": "Pour commencer, les bons vont plutot{cell_suffix} ({direction}) d'ici. A voir.",
-        "silencieux": "Ouverture{cell_suffix} ({direction})."
+        "coach": "Ouverture : privilegie {side}{cell_suffix} — {pct}% des bons y vont. Vois le cadre sur la minimap.",
+        "commandant": "Ouverture : flanc {side}{cell_suffix}.",
+        "detendu": "Au depart, privilegie {side}{cell_suffix} : c'est ce que jouent les bons.",
+        "silencieux": "Flanc {side}."
     },
     "playbook_rotate": {
         "coach": "Bascule : depuis ta zone, les bons enchainent{cell_suffix} ({direction}, ~{distance_m} m) — {pct}% d'entre eux. Suis le mouvement si ton flanc le permet.",

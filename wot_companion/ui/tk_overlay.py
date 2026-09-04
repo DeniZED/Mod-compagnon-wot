@@ -274,6 +274,15 @@ class TkOverlay(OverlaySink):
         elif self._move_mode:
             cv.create_rectangle(1, 1, s - 1, s - 1, outline="#a6ff7a", width=2)
 
+        # Régions conseillées à ENTOURER (secteur/side du playbook) : cadre épais
+        # vert vif, sous les marqueurs. Visuel immédiat quand on n'a pas le temps de lire.
+        for h in state.get("highlights", []) or []:
+            hx0, hz0, hx1, hz1 = h
+            ax, ay = proj.to_px((hx0, hz1))       # coin haut-gauche (z max = nord)
+            bx, by = proj.to_px((hx1, hz0))       # coin bas-droite
+            cv.create_rectangle(ax, ay, bx, by, outline="#0d1a08", width=5)
+            cv.create_rectangle(ax, ay, bx, by, outline="#ffd23f", width=3)
+
         zones = state.get("zones", [])
         route = state.get("route") or []
         # Itinéraire (flèche épaisse) vers la zone conseillée, sous le marqueur.

@@ -36,6 +36,22 @@ def canonical_map_id(name: Optional[str]) -> Optional[str]:
 _GRID_ROWS = "ABCDEFGHJK"
 
 
+def flank_label(fx: float, fz: float) -> str:
+    """Côté ABSOLU de la carte pour une position normalisée (fx: 0 ouest→1 est ;
+    fz: 0 nord→1 sud). Ex. « l'ouest », « le nord-est », « le centre ». Sert à
+    nommer clairement un FLANC en ouverture, plutôt qu'un point relatif proche.
+    """
+    ew = "ouest" if fx < 0.38 else "est" if fx > 0.62 else ""
+    ns = "nord" if fz < 0.38 else "sud" if fz > 0.62 else ""
+    if ns and ew:
+        return "le %s-%s" % (ns, ew)          # le nord-ouest
+    if ew:
+        return "l'%s" % ew                      # l'ouest / l'est
+    if ns:
+        return "le %s" % ns                     # le nord / le sud
+    return "le centre"
+
+
 def grid_cell(pos, bounds, cols: int = 10, sub: bool = True) -> Optional[str]:
     """Case de la grille minimap (ex. 'C4', ou 'C4-9' avec la sous-case).
 

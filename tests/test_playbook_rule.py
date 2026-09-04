@@ -68,3 +68,23 @@ def test_silent_in_late_phase():
 def test_opening_action_in_early_phase():
     out = PlaybookRule().evaluate(_rc((-400.0, 0.0), t=30.0))
     assert out and out[0].action == "PLAYBOOK_OPENING"
+
+
+def test_opening_names_absolute_side_not_relative_point():
+    # En ouverture, on donne un CÔTÉ absolu (flanc) et une case sans sous-quadrant,
+    # pas une direction relative ni un point proche.
+    out = PlaybookRule().evaluate(_rc((-400.0, 0.0), t=30.0))
+    ctx = out[0].context
+    assert "side" in ctx                       # côté absolu nommé
+    assert "distance_m" not in ctx             # plus de point proche relatif
+    # east_hill est à l'est de la carte -> côté "est".
+    assert "est" in ctx["side"]
+    # Case principale sans sous-quadrant (pas de « -7 » artefactuel).
+    assert "-" not in ctx["cell_suffix"].replace("(case ", "").replace(")", "")
+
+
+def test_rotate_keeps_direction_and_plain_cell():
+    # En milieu de partie : bascule avec direction relative + case SANS sous-cell.
+    out = PlaybookRule().evaluate(_rc((-400.0, 0.0), t=200.0))
+    assert out and out[0].action == "PLAYBOOK_ROTATE"
+    assert out[0].context["direction"] == "a l'est"
