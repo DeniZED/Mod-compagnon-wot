@@ -8,8 +8,9 @@ from wot_companion.tactical_knowledge.models import VehicleClass
 
 # ---- Table livrée (amorce) -------------------------------------------------
 def test_bundled_table_classifies_replay_tanks():
-    # Chars présents dans les replays fournis -> classes connues (amorce livrée).
-    assert default_class_of("china:Ch71_WZ_219") is VehicleClass.TD
+    # Amorce enrichie par la capture live du roster (le jeu fournit les classes).
+    # Le WZ-219 est un LIGHT (confirme par le jeu), pas un TD.
+    assert default_class_of("china:Ch71_WZ_219") is VehicleClass.LIGHT
     assert default_class_of("japan:J53_Ho_Ri_Shugo") is VehicleClass.TD
 
 
@@ -46,4 +47,4 @@ def test_load_classifier_merges_external_over_bundled(tmp_path):
     clf = load_classifier(str(p))
     # Externe + amorce livrée disponibles ensemble.
     assert clf.class_of("china:Ch99_New") is VehicleClass.MEDIUM
-    assert clf.class_of("china:Ch71_WZ_219") is VehicleClass.TD
+    assert clf.class_of("china:Ch71_WZ_219") is VehicleClass.LIGHT
