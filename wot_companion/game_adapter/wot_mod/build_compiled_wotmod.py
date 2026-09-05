@@ -5,16 +5,17 @@ wotmod : ils n'importent que du bytecode `.pyc` compile pour LEUR version exacte
 de Python (constatee sur les clients 2.x). Ce script compile
 `mod_wotcompanion.py` avec l'interpreteur fourni, puis empaquette le `.pyc`.
 
-Le `.pyc` doit etre compile avec la MEME version mineure de Python que le client
-(3.8 -> 3.8). La version de correctif (3.8.x) n'a pas d'importance : le magic
-bytecode est identique pour tout 3.8.
+Le `.pyc` doit etre compile avec la MEME version de Python que le client. Le
+client WoT EU (2.x, dossier win64/python27.dll) tourne en **Python 2.7** :
+compiler avec un Python 3 produit un magic incompatible et le mod NE SE CHARGE
+PAS (aucun log). Verifier le magic : un 2.7 commence par 03f30d0a.
 
 Usage :
-    # compile avec l'interpreteur courant
-    python -m wot_companion.game_adapter.wot_mod.build_compiled_wotmod
+    # RECOMMANDE : compiler avec un Python 2.7 (celui du client)
+    python .../build_compiled_wotmod.py --python /chemin/python2.7 --pyver 27
 
-    # compile avec un interpreteur precis (recommande : celui du client)
-    python .../build_compiled_wotmod.py --python /chemin/python3.8 --pyver 38
+    # (a n'utiliser que si un futur client passe a Python 3)
+    python -m wot_companion.game_adapter.wot_mod.build_compiled_wotmod
 """
 from __future__ import annotations
 
