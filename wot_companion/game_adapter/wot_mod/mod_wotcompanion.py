@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b18"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b19"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -454,8 +454,17 @@ def _capture_vehicle_classes(arena):
     """Fusionne les classes du roster dans <out_dir>/vehicle_classes.json (local).
     Grossit a chaque partie ; sert ensuite au rebuild --vehicle-classes."""
     try:
+        n_veh = 0
+        try:
+            n_veh = len(_first(lambda: arena.vehicles) or {})
+        except Exception:
+            n_veh = -1
         pairs = _roster_tag_classes(arena)
         if not pairs:
+            # Log DIAGNOSTIC meme a vide : distingue roster absent (n=0) de
+            # classes non extraites (n>0 mais tags non reconnus / descripteurs
+            # pas encore prets a ce timing).
+            _log("Classes vehicules : 0 extraite (roster=%d vehicules)" % n_veh)
             return
         path = os.path.join(_OUT_DIR, "vehicle_classes.json")
         doc = {"format": 1, "classes": {}}
@@ -570,8 +579,12 @@ class CompanionBridge(object):
 
         self._send_composition(arena)
         # Capture locale des classes du roster (tag->classe) pour un rebuild
-        # PAR CLASSE hors-ligne. Fair Play : classes visibles au joueur.
+        # PAR CLASSE hors-ligne. Fair Play : classes visibles au joueur. On tente
+        # tout de suite ET en differe : au tout debut, les descripteurs de char du
+        # roster ne sont pas toujours prets, la passe differee les rattrape.
         _capture_vehicle_classes(arena)
+        self._schedule(8.0, lambda: _capture_vehicle_classes(
+            _get_arena(_player())))
 
         if DISCOVERY:
             self.discover(p, arena, phase="start")
