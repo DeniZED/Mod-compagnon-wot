@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b17"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b18"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -429,6 +429,61 @@ def _iter_arena_vehicles(arena):
     return out
 
 
+def _roster_tag_classes(arena):
+    """Paires (tag_char, classe) du roster de bataille. Fair Play : la classe de
+    chaque char est visible du joueur (panneaux d'equipe). Sert a batir hors-ligne
+    une table tag->classe pour un clustering PAR CLASSE (lights != lourds)."""
+    out = {}
+    vehicles = _first(lambda: arena.vehicles)
+    if not vehicles:
+        return out
+    for _vid, info in vehicles.items():
+        try:
+            descr = info.get("vehicleType")
+            vtype = getattr(descr, "type", descr)
+            name = getattr(vtype, "name", None)
+            klass = _class_from_tags(getattr(vtype, "tags", ()) or ())
+            if name and klass:
+                out[str(name)] = klass
+        except Exception:
+            continue
+    return out
+
+
+def _capture_vehicle_classes(arena):
+    """Fusionne les classes du roster dans <out_dir>/vehicle_classes.json (local).
+    Grossit a chaque partie ; sert ensuite au rebuild --vehicle-classes."""
+    try:
+        pairs = _roster_tag_classes(arena)
+        if not pairs:
+            return
+        path = os.path.join(_OUT_DIR, "vehicle_classes.json")
+        doc = {"format": 1, "classes": {}}
+        if os.path.exists(path):
+            try:
+                with io.open(path, "r", encoding="utf-8") as fh:
+                    loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    doc["classes"] = dict(loaded.get("classes", loaded))
+            except Exception:
+                pass
+        added = 0
+        for tag, klass in pairs.items():
+            if tag not in doc["classes"]:
+                doc["classes"][tag] = klass
+                added += 1
+        if added:
+            text = json.dumps(doc, ensure_ascii=False, indent=2)
+            if isinstance(text, bytes):        # py2 : bytes -> unicode pour io.open
+                text = text.decode("utf-8")
+            with io.open(path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            _log("Classes vehicules : +%d (total %d) -> %s"
+                 % (added, len(doc["classes"]), path))
+    except Exception:
+        _log("capture classes vehicules: %s" % traceback.format_exc())
+
+
 def _resolve_session_provider():
     """Recupere le fournisseur de session de bataille (plusieurs chemins connus)."""
     sp = _first(
@@ -514,6 +569,9 @@ class CompanionBridge(object):
         self.sender.send("SPAWN_INFO", {"spawn": spawn}, self.battle_id)
 
         self._send_composition(arena)
+        # Capture locale des classes du roster (tag->classe) pour un rebuild
+        # PAR CLASSE hors-ligne. Fair Play : classes visibles au joueur.
+        _capture_vehicle_classes(arena)
 
         if DISCOVERY:
             self.discover(p, arena, phase="start")

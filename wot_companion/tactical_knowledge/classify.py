@@ -69,8 +69,67 @@ def _as_class(value) -> Optional[VehicleClass]:
         return None
 
 
-_DEFAULT = VehicleClassifier()
+_BUNDLED = Path(__file__).with_name("data") / "vehicle_classes.json"
+
+
+def _load_bundled_table() -> Dict[str, str]:
+    """Table tag->classe livrée avec le paquet (grossit via la capture live du
+    roster). Absente/illisible -> vide (on retombe sur ARCHETYPE_BY_TAG)."""
+    try:
+        if _BUNDLED.is_file():
+            data = json.loads(_BUNDLED.read_text(encoding="utf-8"))
+            return data.get("classes", data) if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+_DEFAULT = VehicleClassifier(_load_bundled_table())
 
 
 def default_class_of(vehicle_type: Optional[str]) -> Optional[VehicleClass]:
     return _DEFAULT.class_of(vehicle_type)
+
+
+def merge_vehicle_classes(path: str | Path, new_map: Dict[str, str]) -> int:
+    """Fusionne des paires tag->classe (capturées en live) dans un fichier JSON.
+
+    N'ajoute que des classes VALIDES et non déjà présentes (la classe d'un char
+    est stable). Retourne le nombre de nouvelles entrées écrites. Crée le fichier
+    au format {"format":1, "classes": {...}} s'il n'existe pas.
+    """
+    p = Path(path)
+    doc = {"format": 1, "classes": {}}
+    if p.is_file():
+        try:
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                doc["classes"] = dict(loaded.get("classes", loaded))
+        except (OSError, ValueError):
+            pass
+    classes = doc["classes"]
+    added = 0
+    for tag, klass in (new_map or {}).items():
+        if not tag or tag in classes:
+            continue
+        if _as_class(klass) is None:            # classe invalide -> ignorée
+            continue
+        classes[tag] = _as_class(klass).value
+        added += 1
+    if added:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    return added
+
+
+def load_classifier(path: Optional[str] = None) -> VehicleClassifier:
+    """Classifieur = table livrée + éventuel fichier utilisateur (prioritaire).
+    Sert au build (route/zone) pour étiqueter les chars par classe."""
+    table = dict(_load_bundled_table())
+    if path and Path(path).is_file():
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            table.update(data.get("classes", data) if isinstance(data, dict) else {})
+        except (OSError, ValueError):
+            pass
+    return VehicleClassifier(table)

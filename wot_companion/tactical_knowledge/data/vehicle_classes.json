@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "note": "Table tag->classe (colon). Amorce sûre ; s'étend automatiquement via la capture live du roster (mod) -> merge_vehicle_classes. Ne mettre QUE des classes certaines (une mauvaise classe est pire qu'aucune).",
+  "classes": {
+    "china:Ch71_WZ_219": "td",
+    "japan:J53_Ho_Ri_Shugo": "td"
+  }
+}

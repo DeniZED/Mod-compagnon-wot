@@ -17,6 +17,7 @@ import argparse
 import time
 from pathlib import Path
 
+from ..tactical_knowledge.classify import load_classifier
 from ..tactical_knowledge.route_mining import build_route_clusters, save_routes
 from ..tactical_knowledge.store import TacticalKnowledgeBase
 from ..tactical_map import SectorResolver
@@ -47,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--winners-only", action="store_true")
     ap.add_argument("--min-vehicles", type=int, default=3,
                     help="Routes validées par < N chars distincts écartées.")
+    ap.add_argument("--vehicle-classes", default=None,
+                    help="JSON tag->classe : routes PAR CLASSE (lights != lourds).")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--progress-every", type=int, default=200)
     args = ap.parse_args(argv)
@@ -72,9 +75,9 @@ def main(argv: list[str] | None = None) -> int:
                               args.progress_every)
     try:
         routes = build_route_clusters(
-            datasets, resolver, performers_per_battle=args.performers,
-            winners_only=args.winners_only, min_vehicles=args.min_vehicles,
-            bounds_by_map=bounds)
+            datasets, resolver, classifier=load_classifier(args.vehicle_classes).class_of,
+            performers_per_battle=args.performers, winners_only=args.winners_only,
+            min_vehicles=args.min_vehicles, bounds_by_map=bounds)
     except KeyboardInterrupt:
         print("\nInterrompu — rien n'a été écrit.")
         return 1
