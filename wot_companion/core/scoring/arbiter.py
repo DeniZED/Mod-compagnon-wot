@@ -45,6 +45,9 @@ class CooldownState:
     # Fusion v2 : signatures récentes affichées (t, category, action, intent, sev_rank)
     # pour dé-doublonner les messages sur une courte fenêtre.
     recent_shown: list[tuple[float, str, str, str, int]] = field(default_factory=list)
+    # Une ouverture a déjà été donnée cette partie : les autres familles ne
+    # doivent pas en émettre une seconde (l'ouverture est unique par nature).
+    opening_shown: bool = False
 
     def reset(self) -> None:
         self.last_global_s = None
@@ -56,6 +59,7 @@ class CooldownState:
         self.last_strategic_intent = None
         self.last_strategic_intent_s = None
         self.recent_shown.clear()
+        self.opening_shown = False
 
 
 class AdviceArbiter:
@@ -151,6 +155,13 @@ class AdviceArbiter:
                 diag.append("%s: doublon recent (%s)" % (cand.rule_id, cand.action))
                 continue
 
+            # Ouverture unique : une seule règle donne le cap de départ. Les
+            # ouvertures espacées (>fenêtre dédoublon) échapperaient au filtre
+            # ci-dessus et donneraient deux caps contradictoires en début de game.
+            if cand.action in self._OPENING_ACTIONS and self.state.opening_shown:
+                diag.append("%s: ouverture deja donnee" % cand.rule_id)
+                continue
+
             # Les reactions gerent leur propre cadence (min_interval_s) : on ne
             # leur applique pas la penalite de repetition, sinon elles ne
             # pourraient jamais se repeter sous le feu.
@@ -236,6 +247,11 @@ class AdviceArbiter:
     # Intentions « fortes » : un doublon d'intention entre familles est du bruit.
     _STRONG_INTENTS = frozenset({"ADVANCE", "RETREAT", "RELOCATE", "CAP"})
 
+    # Actions d'ouverture (phase EARLY) : plusieurs règles peuvent en proposer
+    # une (prior de replay, zone efficace). Une seule doit parler par partie,
+    # sinon on donne deux caps d'ouverture contradictoires en début de game.
+    _OPENING_ACTIONS = frozenset({"OPENING_DIRECTION", "PLAYBOOK_OPENING"})
+
     def _is_redundant(self, cand: CandidateAdvice, now_s: float) -> bool:
         """Vrai si `cand` répète un conseil récent sans escalade de sévérité (§11).
 
@@ -277,6 +293,10 @@ class AdviceArbiter:
             st.last_strategic_intent_s = now_s
         if phase is BattlePhase.EARLY and cand.severity is not Severity.CRITICAL:
             st.early_shown += 1
+        # Verrou d'ouverture : dès qu'un cap de départ est donné, plus aucune
+        # autre ouverture pour le reste de la partie.
+        if cand.action in self._OPENING_ACTIONS:
+            st.opening_shown = True
 
     # Horloge injectee par le moteur avant chaque appel a select().
     _now_s: float = 0.0

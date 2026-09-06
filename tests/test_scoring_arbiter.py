@@ -244,3 +244,37 @@ def test_silent_personality_only_critical():
     assert arb.select([info], features=_features()) is None
     crit = _cand("c", AdviceCategory.RETREAT, severity=Severity.CRITICAL)
     assert arb.select([crit], features=_features()) is not None
+
+
+def test_opening_latch_one_opening_per_battle():
+    # Deux règles proposent une ouverture (prior vs zone efficace), espacées de
+    # >20 s (au-delà de la fenêtre anti-doublon) : une seule doit passer, sinon
+    # on donne deux caps d'ouverture contradictoires en début de game.
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    early = _features(phase=BattlePhase.EARLY)
+
+    arb.set_clock(14)
+    first = _cand("playbook.replay_prior", AdviceCategory.POSITIONING,
+                  action="PLAYBOOK_OPENING")
+    assert arb.select([first], features=early) is not None
+
+    # 46 s plus tard, une autre ouverture (autre règle) : refusée par le verrou.
+    arb.set_clock(60)
+    second = _cand("positioning.replay_zones", AdviceCategory.POSITIONING,
+                   action="OPENING_DIRECTION")
+    assert arb.select([second], features=early) is None
+
+
+def test_opening_latch_resets_between_battles():
+    settings = Settings()
+    arb = AdviceArbiter(settings)
+    early = _features(phase=BattlePhase.EARLY)
+    arb.set_clock(14)
+    op = _cand("playbook.replay_prior", AdviceCategory.POSITIONING,
+               action="PLAYBOOK_OPENING")
+    assert arb.select([op], features=early) is not None
+    # Nouvelle partie : le verrou est levé.
+    arb.reset()
+    arb.set_clock(14)
+    assert arb.select([op], features=early) is not None
