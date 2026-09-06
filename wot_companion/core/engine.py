@@ -264,7 +264,8 @@ class AdviceEngine:
             try:
                 from .rules.playbook import select_target
                 found = select_target(self.sector_resolver, self.replay_prior,
-                                      ctx.map_id, ctx.own_pos, ctx.map_bounds, vclass)
+                                      ctx.map_id, ctx.own_pos, ctx.map_bounds, vclass,
+                                      role=getattr(ctx, "vehicle_role", None))
                 if found is not None:
                     sector = found[0]
                     box = self.sector_resolver.sector_world_bounds(

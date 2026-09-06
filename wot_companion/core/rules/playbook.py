@@ -48,7 +48,8 @@ def _cardinal(dx: float, dz: float) -> str:
 
 
 def select_target(resolver, prior, map_id, own_pos, bounds, vehicle_class,
-                  min_prob: float = _MIN_PROB, min_sample: int = _MIN_SAMPLE):
+                  min_prob: float = _MIN_PROB, min_sample: int = _MIN_SAMPLE,
+                  role=None):
     """Cible playbook partagée (règle + radar) : depuis le secteur courant, le
     secteur suivant privilégié par les bons. Retourne (sector, center_monde, prob,
     sample) ou None si rien de FIABLE (prob suffisante ET assez de références).
@@ -69,9 +70,11 @@ def select_target(resolver, prior, map_id, own_pos, bounds, vehicle_class,
             return None
         return t
 
-    # D'abord la donnée SPÉCIFIQUE à la classe (les lights ne jouent pas comme les
-    # lourds) ; si elle est trop maigre, on retombe sur l'agrégat toutes classes.
-    top = _pick(prior.next_sector(cmap, current.id, vehicle_class))
+    # D'abord la donnée SPÉCIFIQUE au RÔLE (assault_heavy != support_heavy) puis à
+    # la CLASSE ; si trop maigre, on retombe sur l'agrégat toutes classes.
+    top = _pick(prior.next_sector(cmap, current.id, vehicle_class, role=role))
+    if top is None and role is not None:
+        top = _pick(prior.next_sector(cmap, current.id, vehicle_class))
     if top is None and vehicle_class is not None:
         top = _pick(prior.next_sector(cmap, current.id, None))
     if top is None:
@@ -102,7 +105,8 @@ class PlaybookRule(Rule):
 
         bounds = b.map_bounds
         found = select_target(rc.sector_resolver, rc.replay_prior, b.map_id,
-                              b.own_pos, bounds, b.vehicle_class)
+                              b.own_pos, bounds, b.vehicle_class,
+                              role=getattr(b, "vehicle_role", None))
         if found is None:
             return []
         sector, target, prob, sample = found

@@ -157,6 +157,7 @@ class PositionCluster:
     assist_score: float = 0.0
     survival_score: float = 0.0
     winrate_score: Optional[float] = None   # taux de victoire (None si non capturé)
+    role: Optional[str] = None         # rôle de jeu (assault_heavy, sniper_medium…)
     sample_size: int = 0
     confidence: float = 0.0
     vehicle_id: Optional[str] = None   # cluster spécifique à un char, sinon classe
@@ -190,6 +191,7 @@ class RouteCluster:
     damage: float = 0.0
     assist: float = 0.0
     win_rate: Optional[float] = None              # taux de victoire (None si inconnu)
+    role: Optional[str] = None                    # rôle de jeu (assault_heavy…)
     sample_size: int = 0
     confidence: float = 0.0
     phase: str = "early"                          # phase de DÉBUT de route

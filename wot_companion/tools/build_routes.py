@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from ..tactical_knowledge.classify import load_classifier
+from ..tactical_knowledge.roles import load_role_table, role_of
 from ..tactical_knowledge.route_mining import build_route_clusters, save_routes
 from ..tactical_knowledge.store import TacticalKnowledgeBase
 from ..tactical_map import SectorResolver
@@ -50,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="Routes validées par < N chars distincts écartées.")
     ap.add_argument("--vehicle-classes", default=None,
                     help="JSON tag->classe : routes PAR CLASSE (lights != lourds).")
+    ap.add_argument("--vehicle-roles", default=None,
+                    help="JSON tag->rôle : routes affinées PAR RÔLE "
+                         "(assault_heavy vs support_heavy…).")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--progress-every", type=int, default=200)
     args = ap.parse_args(argv)
@@ -69,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
         print("Aucune borne disponible pour les cartes annotées.")
         return 1
 
+    role_table = load_role_table(args.vehicle_roles) if args.vehicle_roles else {}
+    role_resolver = (lambda tag: role_of(tag, role_table)) if role_table else None
+
     stats = _Stats()
     t0 = time.time()
     datasets = _iter_datasets(_iter_replay_paths(args.paths), stats, args.limit,
@@ -76,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         routes = build_route_clusters(
             datasets, resolver, classifier=load_classifier(args.vehicle_classes).class_of,
+            role_resolver=role_resolver,
             performers_per_battle=args.performers, winners_only=args.winners_only,
             min_vehicles=args.min_vehicles, bounds_by_map=bounds)
     except KeyboardInterrupt:

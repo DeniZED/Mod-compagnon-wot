@@ -36,7 +36,7 @@ POLL_INTERVAL_S = 2.0
 DISCOVERY = True
 DISCOVERY_DELAY_S = 6.0
 SCHEMA_VERSION = "1.0"
-BUILD_TAG = "b20"               # marqueur de build : confirme que la nouvelle version tourne
+BUILD_TAG = "b21"               # marqueur de build : confirme que la nouvelle version tourne
 
 MAP_NAME_MAP = {
     # Noms internes reels du client WoT (geometryName) -> map_id du moteur.
@@ -429,68 +429,87 @@ def _iter_arena_vehicles(arena):
     return out
 
 
-def _roster_tag_classes(arena):
-    """Paires (tag_char, classe) du roster de bataille. Fair Play : la classe de
-    chaque char est visible du joueur (panneaux d'equipe). Sert a batir hors-ligne
-    une table tag->classe pour un clustering PAR CLASSE (lights != lourds)."""
-    out = {}
+def _roster_tag_meta(arena):
+    """Tables (tag->classe, tag->role) du roster de bataille. Fair Play : classe
+    ET role de chaque char sont visibles du joueur (panneaux d'equipe / tags
+    role_*). Servent a batir hors-ligne des tables pour un clustering PAR CLASSE
+    puis affine PAR ROLE (assault_heavy != support_heavy)."""
+    classes, roles = {}, {}
     vehicles = _first(lambda: arena.vehicles)
     if not vehicles:
-        return out
+        return classes, roles
     for _vid, info in vehicles.items():
         try:
             descr = info.get("vehicleType")
             vtype = getattr(descr, "type", descr)
             name = getattr(vtype, "name", None)
-            klass = _class_from_tags(getattr(vtype, "tags", ()) or ())
-            if name and klass:
-                out[str(name)] = klass
+            tags = getattr(vtype, "tags", ()) or ()
+            if not name:
+                continue
+            klass = _class_from_tags(tags)
+            role = _role_from_tags(tags)
+            if klass:
+                classes[str(name)] = klass
+            if role:
+                roles[str(name)] = role
         except Exception:
             continue
-    return out
+    return classes, roles
+
+
+def _merge_roster_json(pairs, filename, section, label):
+    """Fusionne pairs (tag->valeur) dans <out_dir>/<filename> (section donnee).
+    N'ajoute que les nouveaux ; journalise +N (total M). Idempotent."""
+    if not pairs:
+        return
+    path = os.path.join(_OUT_DIR, filename)
+    doc = {"format": 1, section: {}}
+    if os.path.exists(path):
+        try:
+            with io.open(path, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                doc[section] = dict(loaded.get(section, loaded))
+        except Exception:
+            pass
+    added = 0
+    for tag, val in pairs.items():
+        if tag not in doc[section]:
+            doc[section][tag] = val
+            added += 1
+    if added:
+        text = json.dumps(doc, ensure_ascii=False, indent=2)
+        if isinstance(text, bytes):            # py2 : bytes -> unicode
+            text = text.decode("utf-8")
+        with io.open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        _log("%s : +%d (total %d) -> %s"
+             % (label, added, len(doc[section]), path))
 
 
 def _capture_vehicle_classes(arena):
-    """Fusionne les classes du roster dans <out_dir>/vehicle_classes.json (local).
-    Grossit a chaque partie ; sert ensuite au rebuild --vehicle-classes."""
+    """Fusionne classes ET roles du roster dans <out_dir>/vehicle_classes.json et
+    vehicle_roles.json (locaux). Grossissent a chaque partie ; servent ensuite au
+    rebuild --vehicle-classes / --vehicle-roles."""
     try:
         n_veh = 0
         try:
             n_veh = len(_first(lambda: arena.vehicles) or {})
         except Exception:
             n_veh = -1
-        pairs = _roster_tag_classes(arena)
-        if not pairs:
+        classes, roles = _roster_tag_meta(arena)
+        if not classes and not roles:
             # Log DIAGNOSTIC meme a vide : distingue roster absent (n=0) de
-            # classes non extraites (n>0 mais tags non reconnus / descripteurs
-            # pas encore prets a ce timing).
+            # meta non extraite (n>0 mais tags non reconnus / descripteurs pas
+            # encore prets a ce timing).
             _log("Classes vehicules : 0 extraite (roster=%d vehicules)" % n_veh)
             return
-        path = os.path.join(_OUT_DIR, "vehicle_classes.json")
-        doc = {"format": 1, "classes": {}}
-        if os.path.exists(path):
-            try:
-                with io.open(path, "r", encoding="utf-8") as fh:
-                    loaded = json.load(fh)
-                if isinstance(loaded, dict):
-                    doc["classes"] = dict(loaded.get("classes", loaded))
-            except Exception:
-                pass
-        added = 0
-        for tag, klass in pairs.items():
-            if tag not in doc["classes"]:
-                doc["classes"][tag] = klass
-                added += 1
-        if added:
-            text = json.dumps(doc, ensure_ascii=False, indent=2)
-            if isinstance(text, bytes):        # py2 : bytes -> unicode pour io.open
-                text = text.decode("utf-8")
-            with io.open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-            _log("Classes vehicules : +%d (total %d) -> %s"
-                 % (added, len(doc["classes"]), path))
+        _merge_roster_json(classes, "vehicle_classes.json", "classes",
+                           "Classes vehicules")
+        _merge_roster_json(roles, "vehicle_roles.json", "roles",
+                           "Roles vehicules")
     except Exception:
-        _log("capture classes vehicules: %s" % traceback.format_exc())
+        _log("capture classes/roles vehicules: %s" % traceback.format_exc())
 
 
 def _resolve_session_provider():

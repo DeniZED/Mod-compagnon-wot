@@ -22,6 +22,7 @@ from typing import Iterator, List
 from ..replays.parse import ReplayParseError, parse_replay_full
 from ..tactical_knowledge.aggregate import build_position_clusters
 from ..tactical_knowledge.classify import load_classifier
+from ..tactical_knowledge.roles import load_role_table, role_of
 from ..tactical_knowledge.store import save_clusters
 
 
@@ -87,8 +88,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--vehicle-classes", default=None,
                     help="JSON tag->classe (capture live du roster) : active le "
                          "clustering PAR CLASSE au lieu de tout-agnostique.")
+    ap.add_argument("--vehicle-roles", default=None,
+                    help="JSON tag->rôle (capture live) : affine par RÔLE "
+                         "(assault_heavy vs support_heavy…) au sein d'une classe.")
     args = ap.parse_args(argv)
     classifier = load_classifier(args.vehicle_classes)
+    role_table = load_role_table(args.vehicle_roles) if args.vehicle_roles else {}
+    role_resolver = (lambda tag: role_of(tag, role_table)) if role_table else None
 
     stats = _Stats()
     t0 = time.time()
@@ -100,7 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     # en mémoire à la fois, seuls les accumulateurs de cellules sont conservés.
     try:
         clusters = build_position_clusters(
-            datasets, classifier=classifier.class_of, cell_size=args.cell_size,
+            datasets, classifier=classifier.class_of, role_resolver=role_resolver,
+            cell_size=args.cell_size,
             performers_per_battle=args.performers, winners_only=args.winners_only,
             min_samples=args.min_samples, min_vehicles=args.min_vehicles)
     except KeyboardInterrupt:

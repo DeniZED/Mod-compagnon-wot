@@ -111,3 +111,33 @@ def test_prior_utility_reranks_and_gates():
     p.utility = UtilityModel("impact", min_sample=8)
     ranked = p.next_sector("prokhorovka", "spawn", VehicleClass.MEDIUM)
     assert ranked[0].sector == "ridge_win"
+
+
+def test_prior_opening_prefers_role_over_class():
+    # Deux profils de lourd : ASSAUT ouvre nord, SOUTIEN ouvre sud. Le prior par
+    # rôle doit renvoyer l'ouverture du bon rôle, pas la moyenne de classe.
+    routes = []
+    for _ in range(5):
+        r = _route(["spawn", "north_ridge"], vclass=VehicleClass.HEAVY, samples=30)
+        r.role = "assault_heavy"
+        routes.append(r)
+    for _ in range(5):
+        r = _route(["spawn", "south_hull"], vclass=VehicleClass.HEAVY, samples=30)
+        r.role = "support_heavy"
+        routes.append(r)
+    p = build_priors(routes)
+    op_assault = p.opening("prokhorovka", "team1", VehicleClass.HEAVY, "early",
+                           role="assault_heavy")
+    op_support = p.opening("prokhorovka", "team1", VehicleClass.HEAVY, "early",
+                           role="support_heavy")
+    assert op_assault[0].sector == "north_ridge"
+    assert op_support[0].sector == "south_hull"
+
+
+def test_route_roundtrip_keeps_role(tmp_path):
+    from wot_companion.tactical_knowledge.route_mining import (
+        routes_to_dict, _route_from_json)
+    r = _route(["spawn", "north_ridge"], vclass=VehicleClass.HEAVY, samples=30)
+    r.role = "assault_heavy"
+    back = _route_from_json(routes_to_dict([r])["routes"][0])
+    assert back.role == "assault_heavy"

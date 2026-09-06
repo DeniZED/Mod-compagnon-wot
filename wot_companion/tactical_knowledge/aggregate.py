@@ -83,6 +83,7 @@ def build_position_clusters(
     datasets: Iterable[ReplayDataset],
     *,
     classifier: Callable[[Optional[str]], Optional[VehicleClass]] = default_class_of,
+    role_resolver: Optional[Callable[[Optional[str]], Optional[str]]] = None,
     cell_size: float = 40.0,
     performers_per_battle: int = 5,
     winners_only: bool = False,
@@ -102,8 +103,9 @@ def build_position_clusters(
       perte utile (la règle ignore de toute façon les zones peu confiantes).
     - `full_sample_size` : nb de chars distincts au-delà duquel la confiance sature.
     """
-    cells: Dict[Tuple[str, str, Optional[VehicleClass], str, int, int], _Cell] = \
-        defaultdict(_Cell)
+    cells: Dict[tuple, _Cell] = defaultdict(_Cell)
+    # Rôle par cellule (affine la classe : assault_heavy vs support_heavy).
+    role_by_key: Dict[tuple, Optional[str]] = {}
     # Archétype dominant par cellule (métadonnée d'affinage), si classable.
     arch_vote: Dict[tuple, Dict[Archetype, int]] = defaultdict(lambda: defaultdict(int))
     # Déduplication char↔cellule à mémoire bornée : les points d'un même char
@@ -117,8 +119,10 @@ def build_position_clusters(
         if v.vehicle_id != cur_vid:
             cur_vid = v.vehicle_id
             seen_cells = set()
+        role = role_resolver(v.vehicle_type) if role_resolver else None
         gx, gz = int(x // cell_size), int(z // cell_size)
-        key = (map_id, spawn, vclass, phase, gx, gz)
+        key = (map_id, spawn, vclass, role, phase, gx, gz)
+        role_by_key[key] = role
         c = cells[key]
         w = float(max(v.combat_score, 1))
         c.sx += x * w
@@ -139,14 +143,14 @@ def build_position_clusters(
 
     # Normalisation : popularité relative au max de points dans la même (carte,phase).
     max_points: Dict[Tuple[str, str], int] = defaultdict(int)
-    for (map_id, spawn, vclass, phase, _gx, _gz), c in cells.items():
+    for (map_id, spawn, vclass, role, phase, _gx, _gz), c in cells.items():
         mp = (map_id, phase)
         if c.points > max_points[mp]:
             max_points[mp] = c.points
 
     clusters: List[PositionCluster] = []
     for key, c in cells.items():
-        (map_id, spawn, vclass, phase, _gx, _gz) = key
+        (map_id, spawn, vclass, role, phase, _gx, _gz) = key
         if c.points < min_samples or c.weight <= 0 or c.n_veh < min_vehicles:
             continue
         cx, cz = c.sx / c.weight, c.sz / c.weight
@@ -163,7 +167,7 @@ def build_position_clusters(
         archetype = max(votes, key=votes.get) if votes else None
         clusters.append(PositionCluster(
             map_id=map_id, spawn=spawn, phase=phase,
-            vehicle_class=vclass, archetype=archetype,
+            vehicle_class=vclass, archetype=archetype, role=role,
             center=(round(cx, 1), round(cz, 1)), radius=cell_size / 2.0,
             popularity=popularity, effectiveness=effectiveness,
             damage_score=effectiveness, assist_score=0.0,

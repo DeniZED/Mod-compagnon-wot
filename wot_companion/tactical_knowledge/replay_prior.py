@@ -88,19 +88,29 @@ class ReplayPrior:
 
     # --- Requêtes -----------------------------------------------------------
     def opening(self, map_id: str, spawn: str, vehicle_class=None,
-                phase: str = "early") -> List[SectorProb]:
+                phase: str = "early", role: Optional[str] = None) -> List[SectorProb]:
+        # Fallback : rôle (assault_heavy…) > classe > agnostique. Le rôle affine
+        # la classe (un lourd d'assaut ne s'ouvre pas comme un lourd de soutien).
         vc = _vc(vehicle_class)
-        for key in ("%s|%s|%s|%s" % (map_id, spawn, _vckey(vc), phase),
-                    "%s|%s|*|%s" % (map_id, spawn, phase)):
+        keys = []
+        if role:
+            keys.append("%s|%s|%s|%s" % (map_id, spawn, role, phase))
+        keys.append("%s|%s|%s|%s" % (map_id, spawn, _vckey(vc), phase))
+        keys.append("%s|%s|*|%s" % (map_id, spawn, phase))
+        for key in keys:
             if key in self._openings:
                 return self._by_utility(self._openings[key])
         return []
 
     def next_sector(self, map_id: str, from_sector: str,
-                    vehicle_class=None) -> List[SectorProb]:
+                    vehicle_class=None, role: Optional[str] = None) -> List[SectorProb]:
         vc = _vc(vehicle_class)
-        for key in ("%s|%s|%s" % (map_id, from_sector, _vckey(vc)),
-                    "%s|%s|*" % (map_id, from_sector)):
+        keys = []
+        if role:
+            keys.append("%s|%s|%s" % (map_id, from_sector, role))
+        keys.append("%s|%s|%s" % (map_id, from_sector, _vckey(vc)))
+        keys.append("%s|%s|*" % (map_id, from_sector))
+        for key in keys:
             if key in self._transitions:
                 return self._by_utility(self._transitions[key])
         return []
@@ -177,6 +187,7 @@ def build_priors(routes) -> ReplayPrior:
         surv = r.survival * w
         wr = getattr(r, "win_rate", None)
         vc = _vckey(_vc(r.vehicle_class))
+        role = getattr(r, "role", None)
 
         def _add(a: _Acc) -> None:
             a.weight += w
@@ -190,14 +201,20 @@ def build_priors(routes) -> ReplayPrior:
         # trajectoire démarre au spawn (sectors[0]), donc l'info utile « où aller »
         # est le premier secteur atteint ensuite (sectors[1] si présent).
         first = r.sectors[1] if len(r.sectors) >= 2 else r.sectors[0]
-        # Ouverture : premier secteur (clé par classe ET agnostique).
-        for k in ("%s|%s|%s|%s" % (r.map_id, r.spawn, vc, r.phase),
-                  "%s|%s|*|%s" % (r.map_id, r.spawn, r.phase)):
+        # Ouverture : clé par RÔLE (si connu), par classe ET agnostique.
+        open_keys = ["%s|%s|%s|%s" % (r.map_id, r.spawn, vc, r.phase),
+                     "%s|%s|*|%s" % (r.map_id, r.spawn, r.phase)]
+        if role:
+            open_keys.append("%s|%s|%s|%s" % (r.map_id, r.spawn, role, r.phase))
+        for k in open_keys:
             _add(open_acc[k][first])
         # Transitions : chaque paire consécutive.
         for src, dst in zip(r.sectors, r.sectors[1:]):
-            for k in ("%s|%s|%s" % (r.map_id, src, vc),
-                      "%s|%s|*" % (r.map_id, src)):
+            trans_keys = ["%s|%s|%s" % (r.map_id, src, vc),
+                          "%s|%s|*" % (r.map_id, src)]
+            if role:
+                trans_keys.append("%s|%s|%s" % (r.map_id, src, role))
+            for k in trans_keys:
                 _add(trans_acc[k][dst])
 
     openings = {k: _rank(t) for k, t in open_acc.items()}

@@ -81,6 +81,7 @@ def build_route_clusters(
     sector_resolver,
     *,
     classifier: Callable[[Optional[str]], Optional[VehicleClass]] = default_class_of,
+    role_resolver: Optional[Callable[[Optional[str]], Optional[str]]] = None,
     performers_per_battle: int = 5,
     winners_only: bool = False,
     min_steps: int = 2,
@@ -128,12 +129,13 @@ def build_route_clusters(
             seq = seq[:max_steps]
             vclass = classifier(v.vehicle_type)
             arch = archetype_of(v.vehicle_type)
+            role = role_resolver(v.vehicle_type) if role_resolver else None
             phase_start = phase_at(traj[0][0])
             sig = tuple(sid for sid, _ in seq)
             spawn = "team%s" % (v.team if v.team is not None else "?")
             gkey = (map_id, spawn, vclass)
             totals[gkey] += 1
-            key = (map_id, spawn, vclass, arch, phase_start, sig)
+            key = (map_id, spawn, vclass, role, arch, phase_start, sig)
             acc = routes[key]
             acc.n_veh += 1
             acc.perf += min(v.combat_score / 3000.0, 1.0)
@@ -147,7 +149,7 @@ def build_route_clusters(
 
     clusters: List[RouteCluster] = []
     for key, acc in routes.items():
-        (map_id, spawn, vclass, arch, phase_start, sig) = key
+        (map_id, spawn, vclass, role, arch, phase_start, sig) = key
         if acc.n_veh < min_vehicles:
             continue
         gkey = (map_id, spawn, vclass)
@@ -158,7 +160,7 @@ def build_route_clusters(
             for i in sorted(acc.step_sum) if acc.step_sum[i][2] > 0
         ]
         clusters.append(RouteCluster(
-            map_id=map_id, spawn=spawn, archetype=arch,
+            map_id=map_id, spawn=spawn, archetype=arch, role=role,
             vehicle_class=vclass, phase=phase_start, sectors=list(sig),
             waypoints=waypoints, usage_rate=min(usage, 1.0),
             performance=acc.perf / acc.n_veh,
@@ -185,7 +187,7 @@ def _route_to_json(r: RouteCluster) -> dict:
         "phase": r.phase, "sectors": list(r.sectors),
         "waypoints": [list(w) for w in r.waypoints],
         "usage_rate": r.usage_rate, "performance": r.performance,
-        "survival": r.survival, "win_rate": r.win_rate,
+        "survival": r.survival, "win_rate": r.win_rate, "role": r.role,
         "sample_size": r.sample_size, "confidence": r.confidence,
     }
 
@@ -203,6 +205,7 @@ def _route_from_json(d: dict) -> RouteCluster:
         performance=float(d.get("performance", 0.0)),
         survival=float(d.get("survival", 0.0)),
         win_rate=(float(d["win_rate"]) if d.get("win_rate") is not None else None),
+        role=d.get("role"),
         sample_size=int(d.get("sample_size", 0)),
         confidence=float(d.get("confidence", 0.0)),
     )

@@ -94,6 +94,7 @@ class TacticalPositioningRule(Rule):
         vclass = self._vehicle_class(b.vehicle_class)
         near = kb.nearest_clusters(
             cmap, b.own_pos, phase=phase_key, vehicle_class=vclass,
+            role=getattr(b, "vehicle_role", None),
             max_dist=_SEARCH_RADIUS_M, limit=1,
         )
         if not near:

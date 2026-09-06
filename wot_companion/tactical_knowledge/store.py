@@ -55,6 +55,7 @@ def _cluster_from_json(d: dict) -> PositionCluster:
         survival_score=float(d.get("survival_score", 0.0)),
         winrate_score=(float(d["winrate_score"])
                        if d.get("winrate_score") is not None else None),
+        role=d.get("role"),
         sample_size=int(d.get("sample_size", 0)),
         confidence=float(d.get("confidence", 0.0)),
         vehicle_id=d.get("vehicle_id"),
@@ -123,6 +124,7 @@ class TacticalKnowledgeBase:
         phase: Optional[str] = None,
         archetype: Optional[Archetype] = None,
         vehicle_class: Optional[VehicleClass] = None,
+        role: Optional[str] = None,
         max_dist: float = 120.0,
         limit: int = 3,
     ) -> List[PositionCluster]:
@@ -151,6 +153,18 @@ class TacticalKnowledgeBase:
                     class_factor = 0.75          # zone agnostique : repli acceptable
                 else:
                     continue                     # autre classe : hors sujet
+            # Rôle (affine la classe) : même rôle préféré ; zone rôle-agnostique
+            # acceptable en repli ; AUTRE rôle explicite écarté (un lourd d'assaut
+            # ne suit pas les spots d'un lourd de soutien). Sans rôle demandé (rôle
+            # live inconnu), aucun filtrage.
+            role_factor = 1.0
+            if role is not None and c.role is not None:
+                if c.role == role:
+                    role_factor = 1.0
+                else:
+                    continue
+            elif role is not None and c.role is None:
+                role_factor = 0.85               # zone rôle-agnostique : repli
             dx, dz = c.center[0] - x, c.center[1] - z
             dist = (dx * dx + dz * dz) ** 0.5
             if dist > max_dist:
@@ -164,7 +178,7 @@ class TacticalKnowledgeBase:
                 merit = sc.value * sc.confidence
             else:
                 merit = c.effectiveness * c.confidence
-            relevance = merit * (0.4 + 0.6 * proximity) * class_factor
+            relevance = merit * (0.4 + 0.6 * proximity) * class_factor * role_factor
             scored.append((relevance, dist, c))
         scored.sort(key=lambda t: (-t[0], t[1]))
         return [c for _, _, c in scored[:limit]]
