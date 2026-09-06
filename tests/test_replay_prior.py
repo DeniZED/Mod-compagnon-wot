@@ -72,3 +72,42 @@ def test_empty_sectors_ignored():
                       _route(["north_base", "west_field", "center_rail"])])
     op = p.opening("prokhorovka", "team1", VehicleClass.MEDIUM)
     assert op and op[0].sector == "west_field"
+
+
+# ---- Utilité apprise (§8) sur les priors -----------------------------------
+def test_prior_roundtrip_keeps_survival_and_winrate(tmp_path):
+    routes = [
+        _route(["north_base", "west_field"], samples=40, perf=0.7),
+        _route(["north_base", "east_hill"], samples=30, perf=0.5),
+    ]
+    routes[0].survival = 0.7
+    routes[0].win_rate = 0.62
+    p = build_priors(routes)
+    path = tmp_path / "priors.json"
+    p.save(str(path))
+    back = ReplayPrior.load(str(path))
+    op = back.opening("prokhorovka", "team1", VehicleClass.MEDIUM, "early")
+    west = next(s for s in op if s.sector == "west_field")
+    assert abs(west.survival - 0.7) < 1e-6
+    assert west.winrate is not None and abs(west.winrate - 0.62) < 1e-6
+
+
+def test_prior_utility_reranks_and_gates():
+    from wot_companion.tactical_knowledge.utility import UtilityModel
+    # Deux destinations : la plus POPULAIRE performe mal, l'autre bien au-dessus.
+    routes = []
+    for _ in range(6):
+        routes.append(_route(["spawn", "cap_camp"], samples=40, perf=0.30))  # populaire, faible
+    for _ in range(3):
+        routes.append(_route(["spawn", "ridge_win"], samples=40, perf=0.85)) # moins fréquent, fort
+    for r in routes:
+        r.survival = 0.35 if r.sectors[1] == "cap_camp" else 0.75
+    p = build_priors(routes)
+    # Sans utilité : la populaire sort en tête.
+    plain = p.next_sector("prokhorovka", "spawn", VehicleClass.MEDIUM)
+    assert plain[0].sector == "cap_camp"
+    # Avec utilité (impact) : la case efficace passe devant, la faible est écartée.
+    p.utility = UtilityModel("impact", min_sample=8)
+    ranked = p.next_sector("prokhorovka", "spawn", VehicleClass.MEDIUM)
+    assert ranked[0].sector == "ridge_win"
+    assert all(s.sector != "cap_camp" for s in ranked)

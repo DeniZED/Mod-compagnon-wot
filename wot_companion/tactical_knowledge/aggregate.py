@@ -54,6 +54,8 @@ class _Cell:
     n_veh: int = 0             # nb de chars distincts ayant contribué
     dmg: float = 0.0           # somme impact des chars contributeurs (dédupliqué)
     survived: int = 0
+    won: int = 0               # nb de chars ayant GAGNÉ (résultat connu)
+    won_known: int = 0         # nb de chars au résultat connu (dénominateur)
 
 
 def _sample_cluster(
@@ -61,16 +63,20 @@ def _sample_cluster(
     classifier: Callable[[Optional[str]], Optional[VehicleClass]],
     performers_per_battle: int,
     winners_only: bool,
-) -> Iterable[Tuple[str, str, Optional[VehicleClass], str, VehicleResult, XZ]]:
-    """Génère (map_id, spawn, classe|None, phase, résultat, (x,z)) point par point."""
+) -> Iterable[Tuple[str, str, Optional[VehicleClass], str, VehicleResult, XZ, Optional[bool]]]:
+    """Génère (map_id, spawn, classe|None, phase, résultat, (x,z), gagné?) point à point.
+
+    `gagné?` : True/False si le résultat de la partie est connu, sinon None."""
     for ds in datasets:
         map_id = canonical_map_id(ds.summary.map_id) or "unknown"
+        winner = ds.summary_winner_team()
         best = ds.best_performers(performers_per_battle, winners_only=winners_only)
         for v in best:
             vclass = classifier(v.vehicle_type)   # None = zone agnostique de classe
             spawn = "team%s" % (v.team if v.team is not None else "?")
+            won = None if (winner is None or v.team is None) else (v.team == winner)
             for (t, x, z) in ds.trajectory_of(v.vehicle_id):
-                yield map_id, spawn, vclass, phase_at(t), v, (x, z)
+                yield map_id, spawn, vclass, phase_at(t), v, (x, z), won
 
 
 def build_position_clusters(
@@ -105,7 +111,7 @@ def build_position_clusters(
     # les cellules du char COURANT ; on remet à zéro au changement de char.
     cur_vid = None
     seen_cells: set = set()
-    for map_id, spawn, vclass, phase, v, (x, z) in _sample_cluster(
+    for map_id, spawn, vclass, phase, v, (x, z), won in _sample_cluster(
         datasets, classifier, performers_per_battle, winners_only
     ):
         if v.vehicle_id != cur_vid:
@@ -124,6 +130,9 @@ def build_position_clusters(
             c.n_veh += 1
             c.dmg += v.combat_score
             c.survived += 1 if v.survived else 0
+            if won is not None:
+                c.won_known += 1
+                c.won += 1 if won else 0
             arch = archetype_of(v.vehicle_type)
             if arch is not None:
                 arch_vote[key][arch] += 1
@@ -158,7 +167,9 @@ def build_position_clusters(
             center=(round(cx, 1), round(cz, 1)), radius=cell_size / 2.0,
             popularity=popularity, effectiveness=effectiveness,
             damage_score=effectiveness, assist_score=0.0,
-            survival_score=survival, sample_size=c.points, confidence=confidence,
+            survival_score=survival,
+            winrate_score=(c.won / c.won_known) if c.won_known else None,
+            sample_size=c.points, confidence=confidence,
         ))
     clusters.sort(key=lambda k: (k.effectiveness, k.popularity), reverse=True)
     return clusters

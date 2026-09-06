@@ -53,6 +53,8 @@ def _cluster_from_json(d: dict) -> PositionCluster:
         damage_score=float(d.get("damage_score", 0.0)),
         assist_score=float(d.get("assist_score", 0.0)),
         survival_score=float(d.get("survival_score", 0.0)),
+        winrate_score=(float(d["winrate_score"])
+                       if d.get("winrate_score") is not None else None),
         sample_size=int(d.get("sample_size", 0)),
         confidence=float(d.get("confidence", 0.0)),
         vehicle_id=d.get("vehicle_id"),

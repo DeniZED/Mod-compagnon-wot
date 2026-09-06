@@ -58,6 +58,11 @@ class AdviceEngine:
         # sans (les règles concernées restent silencieuses).
         self.sector_resolver = sector_resolver
         self.replay_prior = replay_prior
+        # Utilité apprise (§8) sur les priors d'ouverture/transition : les options
+        # sont ré-ordonnées par avantage relatif et filtrées si non prouvées.
+        if replay_prior is not None and getattr(replay_prior, "utility", None) is None:
+            from ..tactical_knowledge.utility import UtilityModel
+            replay_prior.utility = UtilityModel(self.settings.utility_objective)
         self.fairplay = fairplay or FairPlayFilter(audit=True)
         self.scorer = Scorer(self.settings.scoring)
         self.arbiter = AdviceArbiter(self.settings, self.scorer)
