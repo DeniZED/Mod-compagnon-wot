@@ -106,8 +106,8 @@ def test_prior_utility_reranks_and_gates():
     # Sans utilité : la populaire sort en tête.
     plain = p.next_sector("prokhorovka", "spawn", VehicleClass.MEDIUM)
     assert plain[0].sector == "cap_camp"
-    # Avec utilité (impact) : la case efficace passe devant, la faible est écartée.
+    # Avec utilité (impact) : la case efficace remonte en tête (ranking), sans
+    # supprimer l'option populaire (elle reste candidate, mais derrière).
     p.utility = UtilityModel("impact", min_sample=8)
     ranked = p.next_sector("prokhorovka", "spawn", VehicleClass.MEDIUM)
     assert ranked[0].sector == "ridge_win"
-    assert all(s.sector != "cap_camp" for s in ranked)

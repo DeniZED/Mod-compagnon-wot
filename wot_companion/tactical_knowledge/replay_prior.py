@@ -105,10 +105,18 @@ class ReplayPrior:
                 return self._by_utility(self._transitions[key])
         return []
 
+    # En-dessous de cette popularité, une option est « rare » : on la garde comme
+    # candidate mais elle ne peut pas coiffer une option bien fréquentée sur la
+    # seule utilité (une ouverture doit rester un chemin que les forts empruntent).
+    _RARE_PROB = 0.15
+
     def _by_utility(self, options: List[SectorProb]) -> List[SectorProb]:
-        """Ré-ordonne les options par utilité relative à la référence du groupe et
-        écarte celles qui ne battent pas la moyenne (garde). Sans UtilityModel :
-        renvoie l'ordre d'origine (popularité)."""
+        """Ré-ordonne les options par utilité relative à la référence du groupe,
+        en PRÉFÉRANT l'impact sans supprimer les options fréquentées (sinon plus de
+        cible à afficher / entourer). Une option rare est pénalisée pour ne pas
+        coiffer une option populaire sur la seule utilité. Les fiabilités de
+        popularité/échantillon restent gérées en aval (select_target). Sans
+        UtilityModel : ordre d'origine (popularité)."""
         if self.utility is None or not options:
             return options
         from .utility import compute_baseline
@@ -120,10 +128,8 @@ class ReplayPrior:
             sc = self.utility.score(
                 survival=o.survival, damage=o.performance, sample=o.sample,
                 baseline=base, winrate=o.winrate)
-            if self.utility.passes(sc):
-                scored.append((sc.value, o))
-        if not scored:
-            return []
+            rare_penalty = 1.0 if o.prob >= self._RARE_PROB else 0.5
+            scored.append((sc.value * rare_penalty, o))
         scored.sort(key=lambda t: t[0], reverse=True)
         return [o for _, o in scored]
 

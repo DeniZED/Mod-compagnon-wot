@@ -159,8 +159,8 @@ class TacticalKnowledgeBase:
             if self.utility is not None:
                 # Utilité RELATIVE : avantage sur la référence, garde de fiabilité.
                 sc = self._utility_of(c)
-                if sc is None or not self.utility.passes(sc):
-                    continue                     # sous la référence / non prouvé
+                if sc is None or not self.utility.keep(sc):
+                    continue                     # clairement sous la référence
                 merit = sc.value * sc.confidence
             else:
                 merit = c.effectiveness * c.confidence

@@ -120,10 +120,16 @@ class UtilityModel:
     """Score une connaissance (zone/route) en utilité relative à sa référence."""
 
     def __init__(self, objective: str = "impact",
-                 min_sample: int = 8, min_advantage: float = 0.05) -> None:
+                 min_sample: int = 8, min_advantage: float = 0.05,
+                 keep_floor: float = 0.5) -> None:
         self.objective = objective if objective in OBJECTIVES else "impact"
         self.min_sample = min_sample
         self.min_advantage = min_advantage
+        # Plancher de CONSERVATION : une option est gardée si sa note ponctuelle
+        # (rétrécie) atteint ce niveau. 0.5 = au moins au niveau de la référence.
+        # Plus souple que `passes()` (borne basse) : filtre les options clairement
+        # SOUS la moyenne sans réduire l'affichage au silence quasi total.
+        self.keep_floor = keep_floor
 
     def score(
         self,
@@ -172,8 +178,16 @@ class UtilityModel:
         return UtilityScore(value=value, advantage_lb=adv_lb, confidence=conf)
 
     def passes(self, score: UtilityScore) -> bool:
-        """Garde de fiabilité : avantage prudent au-dessus de la marge minimale."""
+        """Garde STRICTE : avantage prudent (borne basse) au-dessus de la marge."""
         return score.advantage_lb >= self.min_advantage
+
+    def keep(self, score: UtilityScore) -> bool:
+        """Filtre SOUPLE : conserver si au niveau de la référence ou au-dessus.
+
+        Utilisé pour l'affichage live (zones, priors) : on écarte le clairement
+        sous-la-moyenne, mais on garde de quoi conseiller/afficher. Le classement
+        par `value` fait remonter les meilleures options."""
+        return score.value >= self.keep_floor
 
 
 def _advantage_rate(rate: float, baseline: float) -> float:

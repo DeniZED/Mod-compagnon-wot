@@ -130,3 +130,25 @@ def test_map_id_canonicalized_at_query():
     kb = TacticalKnowledgeBase([_zone(center=(150.0, 0.0), map_id="ruinberg")])
     rule = TacticalPositioningRule()
     assert rule.evaluate(_rc(kb, own=(0.0, 0.0), map_id="08_ruinberg"))
+
+
+def test_opening_rejects_niche_zone():
+    # EARLY : une zone de niche (5% de popularité) ne doit PAS devenir une
+    # ouverture (le « 5% à 243 m » vu en jeu). Silence -> le playbook parle.
+    kb = TacticalKnowledgeBase([_zone(center=(120.0, 120.0), pop=0.05)])
+    out = TacticalPositioningRule().evaluate(_rc(kb, t=20.0))
+    assert out == []
+
+
+def test_opening_accepts_popular_zone():
+    # EARLY : une zone bien fréquentée reste une ouverture valable.
+    kb = TacticalKnowledgeBase([_zone(center=(120.0, 120.0), pop=0.6)])
+    out = TacticalPositioningRule().evaluate(_rc(kb, t=20.0))
+    assert out and out[0].action == "OPENING_DIRECTION"
+
+
+def test_midgame_keeps_niche_zone_as_rotation():
+    # MID : la même zone de niche reste utilisable en bascule (pas une ouverture).
+    kb = TacticalKnowledgeBase([_zone(center=(120.0, 120.0), phase="mid", pop=0.05)])
+    out = TacticalPositioningRule().evaluate(_rc(kb, t=300.0))
+    assert out and out[0].action == "REPOSITION_TO_ZONE"

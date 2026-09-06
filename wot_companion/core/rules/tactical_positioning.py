@@ -36,6 +36,11 @@ _SEARCH_RADIUS_M = 250.0
 # la survie prime et les familles réaction/HP/décrochage prennent le relais. Éviter
 # cette incohérence ("décroche" d'un côté, "repositionne-toi au front" de l'autre).
 _SURVIVAL_HP = 0.30
+# OUVERTURE (phase EARLY) : une zone d'ouverture doit être un chemin RÉELLEMENT
+# emprunté par les forts, pas une case de niche (ex. le « 5% à 243 m » vu en
+# jeu). Sous ce plancher de popularité on se tait : c'est le playbook (prior
+# d'ouverture) qui doit parler. La distance reste bornée par _SEARCH_RADIUS_M.
+_OPEN_MIN_POP = 0.15
 
 _PHASE_KEY = {
     BattlePhase.EARLY: "early",
@@ -127,6 +132,13 @@ class TacticalPositioningRule(Rule):
         # ("oriente-toi vers…") plutôt qu'un "repositionne-toi" : c'est là que le
         # joueur veut savoir où partir.
         opening = rc.features.phase is BattlePhase.EARLY
+        # Ouverture : refuser une zone de niche (ex. « 5% des références »). Une
+        # ouverture doit être un cap franc et fréquenté ; la case rare reste
+        # utilisable en milieu de partie (bascule), pas au départ.
+        if opening and zone.popularity < _OPEN_MIN_POP:
+            self._diag(rc, "ouverture_niche pop=%.2f (<%.2f) map=%s"
+                       % (zone.popularity, _OPEN_MIN_POP, cmap))
+            return []
         action = "OPENING_DIRECTION" if opening else "REPOSITION_TO_ZONE"
         template = "pos_replay_opening" if opening else "pos_replay_zone"
         return [CandidateAdvice(
