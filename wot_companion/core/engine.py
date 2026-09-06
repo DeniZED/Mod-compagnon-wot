@@ -47,6 +47,13 @@ class AdviceEngine:
             from ..tactical_knowledge.store import TacticalKnowledgeBase
             tactical_kb = TacticalKnowledgeBase()
         self.tactical_kb = tactical_kb
+        # Utilité apprise (§8) : note les zones en avantage RELATIF à la référence
+        # (survie + dégâts par défaut), avec garde de fiabilité. Attachée ici si la
+        # base n'en porte pas déjà une, selon l'objectif choisi dans les réglages.
+        if getattr(tactical_kb, "utility", None) is None and tactical_kb.clusters:
+            from ..tactical_knowledge.utility import UtilityModel
+            tactical_kb.utility = UtilityModel(self.settings.utility_objective)
+            tactical_kb._build_baselines()
         # Tactical Map Model + priors de jeu (optionnels) : le moteur fonctionne
         # sans (les règles concernées restent silencieuses).
         self.sector_resolver = sector_resolver

@@ -119,3 +119,39 @@ def test_app_missing_kb_file_starts_empty(tmp_path):
     app = CompanionApp(settings=Settings(tactical_kb_path=str(tmp_path / "absent.json")))
     assert app.engine.tactical_kb.clusters == []
     app.close()
+
+
+# ---- Utilité apprise (§8) : gating relatif à la référence ------------------
+def _u_cluster(eff, surv, n, center=(100.0, 100.0)):
+    from wot_companion.tactical_knowledge.models import VehicleClass
+    return PositionCluster(
+        map_id="a", spawn="team1", phase="mid", vehicle_class=VehicleClass.LIGHT,
+        archetype=None, center=center, radius=20.0, popularity=0.5,
+        effectiveness=eff, damage_score=eff, assist_score=0.0,
+        survival_score=surv, sample_size=n, confidence=min(n / 40.0, 1.0))
+
+
+def test_utility_drops_below_baseline_zone():
+    from wot_companion.tactical_knowledge.utility import UtilityModel
+    # Référence du groupe : moyenne ~ eff 0.5 / survie 0.5. Une zone nettement
+    # sous la moyenne ne doit PAS ressortir ; une au-dessus (bien échantillonnée) oui.
+    clusters = [
+        _u_cluster(0.50, 0.50, 60, center=(100.0, 100.0)),   # ~ référence
+        _u_cluster(0.50, 0.50, 60, center=(130.0, 100.0)),   # ~ référence
+        _u_cluster(0.20, 0.25, 60, center=(100.0, 130.0)),   # sous la moyenne
+        _u_cluster(0.85, 0.75, 80, center=(100.0, 115.0)),   # au-dessus, fiable
+    ]
+    tk = TacticalKnowledgeBase(clusters, utility=UtilityModel("impact"))
+    near = tk.nearest_clusters("a", (100.0, 110.0), phase="mid", max_dist=200.0,
+                               limit=5)
+    centers = {c.center for c in near}
+    assert (100.0, 115.0) in centers          # la meilleure ressort
+    assert (100.0, 130.0) not in centers      # la sous-moyenne est écartée
+
+
+def test_utility_disabled_keeps_all_effective_zones():
+    # Sans UtilityModel : comportement historique (pas de gating relatif).
+    clusters = [_u_cluster(0.20, 0.25, 60, center=(100.0, 130.0))]
+    tk = TacticalKnowledgeBase(clusters)          # utility=None
+    near = tk.nearest_clusters("a", (100.0, 128.0), phase="mid", max_dist=200.0)
+    assert len(near) == 1

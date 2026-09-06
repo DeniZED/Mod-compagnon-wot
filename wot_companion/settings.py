@@ -110,6 +110,10 @@ class Settings:
         default_factory=lambda: {c.value for c in AdviceCategory}
     )
     session_objective: str | None = None  # survie / degats / assistance / discipline_early
+    # Utilité apprise (§8) : sur quoi les zones/priors sont notés en avantage
+    # relatif. "impact" (survie + dégâts, défaut, le plus fiable car attribuable),
+    # "winrate" (avantage de victoire) ou "mixed". Voir tactical_knowledge.utility.
+    utility_objective: str = "impact"
     scoring: ScoringWeights = field(default_factory=ScoringWeights)
     anti_spam: AntiSpamSettings = field(default_factory=AntiSpamSettings)
     ui: UISettings = field(default_factory=UISettings)

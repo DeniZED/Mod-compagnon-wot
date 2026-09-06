@@ -72,6 +72,8 @@ def config_to_settings(cfg: dict[str, Any], base: Settings | None = None) -> Set
         s.intensity = float(cfg["intensity"])
     if "session_objective" in cfg:
         s.session_objective = cfg["session_objective"] or None
+    if cfg.get("utility_objective") in ("impact", "winrate", "mixed"):
+        s.utility_objective = cfg["utility_objective"]
     valid = {c.value for c in AdviceCategory}
     if isinstance(cfg.get("disabled_categories"), list):
         # Format opt-out : actif = tout sauf ce qui est explicitement désactivé.
