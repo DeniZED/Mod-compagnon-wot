@@ -26,6 +26,7 @@ def settings_to_config(s: Settings) -> dict[str, Any]:
         "personality": s.personality.value,
         "intensity": s.intensity,
         "session_objective": s.session_objective,
+        "utility_objective": s.utility_objective,
         # Opt-out : on ne mémorise QUE les catégories explicitement désactivées.
         # Ainsi toute catégorie ajoutée plus tard est active par défaut (sinon une
         # config ancienne éteignait silencieusement les nouvelles familles).
